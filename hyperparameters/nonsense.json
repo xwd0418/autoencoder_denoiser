@@ -2,6 +2,7 @@
     "experiment_name": "default_experiment",
     "dataset": {
       "shuffle": true,
+      "noise_factor": 0.2,
       "batch_size": 64,
       "num_workers": 4
     },
