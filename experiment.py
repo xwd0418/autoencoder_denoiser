@@ -16,6 +16,7 @@ class Experiment(object):
         f = open('./hyperparameters/'+ name + '.json')
         config = data = json.load(f)
         self.config = config
+        self.best_model = None
 
         if config is None:
             raise Exception("Configuration file doesn't exist: ", name)
@@ -33,6 +34,7 @@ class Experiment(object):
 
         # Setup Experiment
         self.__epochs = config['experiment']['num_epochs']
+        self.__curr_epoch = 0
         self.__current_epoch = 0
         self.__training_losses = []
         self.__val_losses = []
@@ -43,10 +45,12 @@ class Experiment(object):
 
         # Init Model
         self.__model = get_model(config)
+        self.__model = torch.nn.DataParallel(self.__model)
         
         if config['model']['model_type'] == 'filter':
             return None
         self.best_epoch = 0
+        
 
         # Also assign GPU to device
         self.device = torch.device(
@@ -88,8 +92,8 @@ class Experiment(object):
     def run(self):
         if self.config['model']['model_type'] == 'filter':
             return
-        for epoch in range( self.__epochs):  # loop over the dataset multiple times
-            print("epoch: ",epoch)
+        for self.__current_epoch in range( self.__epochs):  # loop over the dataset multiple times
+            print("epoch: ",self.__current_epoch)
             train_loss, train_accu = self.__train()
             val_loss,val_accu = self.__val()
             
@@ -118,7 +122,8 @@ class Experiment(object):
             # print(prediction.shape, raw.shape)
             loss=self.__criterion(prediction,raw )
             with torch.no_grad():
-                accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
+                intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
+                accu =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)
             loss.backward()
             self.__optimizer.step()
             training_loss+=loss.item()
@@ -130,7 +135,7 @@ class Experiment(object):
         return training_loss,training_accu
 
     def __val(self):
-        print("validating stage")
+        # print("validating stage")
 
         accu = []
         self.__model.eval()
@@ -141,10 +146,35 @@ class Experiment(object):
                 raw, noise = raw.cuda().float(), noise.cuda().float()
                 prediction = self.__model.forward(noise)
                 
+                if self.__current_epoch%35==0 and iter==0:
+                    plt.clf()
+
+                    ax = plt.subplot(1, 3, 1)
+                    plt.tight_layout()
+                    ax.set_title('orig')
+                    ax.axis('off')
+                    plt.imshow(raw[0].cpu())
+
+                    ax = plt.subplot(1, 3, 2)
+                    plt.tight_layout()
+                    ax.set_title('noise')
+                    ax.axis('off')
+                    plt.imshow(noise[0].cpu())
+
+                    ax = plt.subplot(1, 3, 3)
+                    plt.tight_layout()
+                    ax.set_title('predicted')
+                    ax.axis('off')
+                    plt.imshow(prediction[0].cpu())
+
+                    plt.savefig(os.path.join(self.__experiment_dir, "epoch_{}_sample_images.png".format(str(self    .__current_epoch))))
+                    displayed = True
+                    plt.clf()
+
                 # find accuracy
-                with torch.no_grad():
-                    batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
-                    accu.append(batch_accu)
+                intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
+                batch_accu =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)                   
+                accu.append(batch_accu)
 
                 # find loss
                 # prediction = prediction.type(torch.float32)
@@ -155,10 +185,11 @@ class Experiment(object):
             self.__min_val_loss = val_loss
             self.__save_model()
             self.best_epoch = self.__current_epoch
+            self.best_model = copy.deepcopy(self.__model)
         output_msg = "Current validation loss: " + str(val_loss)
         # send_discord_msg(output_msg)
 
-           
+        print("val accuracy", (sum(accu) / len(accu)).item()  )   
         return val_loss,(sum(accu) / len(accu)).item()  
 
     def test(self):
@@ -170,7 +201,6 @@ class Experiment(object):
         if self.config['model']['model_type'] == 'filter':
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = data
-                raw, noise = raw.cuda().float(), noise.cuda().float()
                 # if not displayed:
                 #     ax = plt.subplot(1, 4, 1)
                 #     plt.tight_layout()
@@ -181,8 +211,10 @@ class Experiment(object):
                 prediction = self.__model(noise)
                 
                 # print (torch.sum(raw))
-                # print (np.sum(np.array(raw) * perdiction ))
-                batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
+                # print (np.sum(np.array(raw) * perdiction )) 
+                intersec = np.sum(np.array(raw) * prediction )
+                batch_accu = intersec/(torch.sum(raw)+np.sum(prediction)-intersec)
+                # batch_accu = np.sum(np.array(raw) * np.array(prediction ))/(np.sum(raw)+np.sum(prediction))
                 accu.append(batch_accu)
                 # print(accu)
             print((sum(accu) / len(accu)))
@@ -193,7 +225,7 @@ class Experiment(object):
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = data
                 raw, noise = raw.cuda().float(), noise.cuda().float()
-                prediction = self.__model(noise).data
+                prediction = self.best_model(noise).data
 
                 if not displayed:
                     plt.clf()
@@ -223,7 +255,9 @@ class Experiment(object):
                 
                 # print (torch.sum(raw))
                 # print (np.sum(np.array(raw) * perdiction ))
-                batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
+                intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
+                intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
+                batch_accu =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)
                 accu.append(batch_accu)
                 # print(accu)
             print((sum(accu) / len(accu)))
@@ -242,6 +276,8 @@ class Experiment(object):
 
         write_to_file_in_dir(self.__experiment_dir, 'training_losses.txt', self.__training_losses)
         write_to_file_in_dir(self.__experiment_dir, 'val_losses.txt', self.__val_losses)
+        write_to_file_in_dir(self.__experiment_dir, 'training_accu.txt', self.__training_accu)
+        write_to_file_in_dir(self.__experiment_dir, 'val_accu.txt', self.__val_accu)
 
     def __save_model(self):
         root_model_path = os.path.join(self.__experiment_dir, 'latest_model.pt')
