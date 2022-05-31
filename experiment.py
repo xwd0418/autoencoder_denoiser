@@ -41,25 +41,10 @@ class Experiment(object):
 
         # Init Model
         self.__model = get_model(config)
+        print("model got")
         if config['model']['model_type'] == 'filter':
             return None
         self.best_epoch = 0
-        try:
-            lr_step = config["experiment"]["lr_scheduler_step"]
-        except:
-            pass
-        try: 
-            self.lr_scheduler_type = config["experiment"]["lr_scheduler_type"]
-            if self.lr_scheduler_type == "step":
-                self.__lr_scheduler = torch.optim.lr_scheduler.StepLR(self.__optimizer, lr_step[0])
-            elif self.lr_scheduler_type == "multi_step":
-                self.__lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.__optimizer, lr_step)
-            elif self.lr_scheduler_type == "criterion":
-                self.__lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.__optimizer,'min')
-            else: 
-                self.__lr_scheduler = None 
-        except Exception as e: 
-            self.__lr_scheduler = None 
 
         # Also assign GPU to device
         self.device = torch.device(
@@ -67,13 +52,29 @@ class Experiment(object):
         )
         self.__model = self.__model.to(self.device)
 
-        # choosing loss function and optimizer
+        print(" choosing loss function and optimizer")
         if  config["experiment"]["loss_func"] == "MSE":
             self.__criterion = torch.nn.MSELoss()
         else :
             self.__criterion = torch.nn.CrossEntropyLoss() # edited
         
         self.__optimizer = torch.optim.Adam(self.__model.parameters(), lr = self.__learning_rate) # edited
+
+        # add scheduler
+        
+        lr_step = config["experiment"]["lr_scheduler_step"]       
+        self.lr_scheduler_type = config["experiment"]["lr_scheduler_type"]
+        print(self.lr_scheduler_type)
+
+        if self.lr_scheduler_type == "step":
+            self.__lr_scheduler = torch.optim.lr_scheduler.StepLR(self.__optimizer, lr_step[0])
+        elif self.lr_scheduler_type == "multi_step":
+            self.__lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(self.__optimizer, lr_step)
+        elif self.lr_scheduler_type == "criterion":
+            self.__lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.__optimizer,'min')
+        else: 
+            self.__lr_scheduler = None 
+        print(self.__lr_scheduler)
 
         self.__init_model()
 
@@ -178,14 +179,33 @@ class Experiment(object):
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = data
                 raw, noise = raw.cuda().float(), noise.cuda().float()
-                # if not displayed:
-                #     ax = plt.subplot(1, 4, 1)
-                #     plt.tight_layout()
-                #     ax.set_title('orig')
-                #     ax.axis('off')
-                #     plt.imshow(raw[0])
-                #     displayed = True
                 prediction = self.__model(noise).data
+
+                if not displayed:
+                    plt.clf()
+
+                    ax = plt.subplot(1, 3, 1)
+                    plt.tight_layout()
+                    ax.set_title('orig')
+                    ax.axis('off')
+                    plt.imshow(raw[0].cpu())
+
+                    ax = plt.subplot(1, 3, 2)
+                    plt.tight_layout()
+                    ax.set_title('noise')
+                    ax.axis('off')
+                    plt.imshow(noise[0].cpu())
+
+                    ax = plt.subplot(1, 3, 3)
+                    plt.tight_layout()
+                    ax.set_title('predicted')
+                    ax.axis('off')
+                    plt.imshow(prediction[0].cpu())
+
+                    plt.savefig(os.path.join(self.__experiment_dir, "sample_images.png"))
+                    displayed = True
+                    plt.clf()
+                
                 
                 # print (torch.sum(raw))
                 # print (np.sum(np.array(raw) * perdiction ))

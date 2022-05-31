@@ -1,9 +1,7 @@
 import os,sys
-from sklearn.utils import shuffle
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
-from skimage import io, transform
 import numpy as np
 import matplotlib.pyplot as plt
 
