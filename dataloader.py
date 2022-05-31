@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 imgs = []
+print("loading data ...")
 for i in range(1,20):
     data = np.load("dataset/Jeol_info{}000.npy".format(str(i)),allow_pickle=True)
     img_data = data[:,3]

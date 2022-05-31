@@ -2,13 +2,51 @@ import numpy as np
 import sys
 import matplotlib.pyplot as plt
 from sqlalchemy import true
+import torch.nn as nn
+import torch
 
 
 
 def get_model(config):
     model_type = config['model']['model_type']
     if model_type == "filter":
+        print( "model : filter")
         return Filter()
+    else :
+        print( "model : auto-encoder")
+        return denoising_model()
+
+class denoising_model(nn.Module):
+  def __init__(self):
+    super(denoising_model,self).__init__()
+    self.encoder=nn.Sequential(
+                  nn.Linear(100*100,256),
+                  nn.ReLU(True),
+                  nn.Linear(256,128),
+                  nn.ReLU(True),
+                  nn.Linear(128,64),
+                  nn.ReLU(True)
+
+                  )
+    
+    self.decoder=nn.Sequential(
+                  nn.Linear(64,128),
+                  nn.ReLU(True),
+                  nn.Linear(128,256),
+                  nn.ReLU(True),
+                  nn.Linear(256,100*100),
+                  nn.Sigmoid(),
+                  )
+    
+ 
+  def forward(self,x):
+    x=  torch.flatten(x, start_dim=1)
+    print ("input shape", x.shape)
+    x=self.encoder(x)
+    x=self.decoder(x)
+    
+    return x
+
 
 class Filter():
     def __init__(self) -> None:
