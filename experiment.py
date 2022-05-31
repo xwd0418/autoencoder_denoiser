@@ -36,12 +36,14 @@ class Experiment(object):
         self.__current_epoch = 0
         self.__training_losses = []
         self.__val_losses = []
+        self.__training_accu = []
+        self.__val_accu = []
         self.__min_val_loss = 999999
         self.__learning_rate = config['experiment']['learning_rate']
 
         # Init Model
         self.__model = get_model(config)
-        print("model got")
+        
         if config['model']['model_type'] == 'filter':
             return None
         self.best_epoch = 0
@@ -50,7 +52,10 @@ class Experiment(object):
         self.device = torch.device(
             "cuda:0" if torch.cuda.is_available() else "cpu"
         )
+        
+        print("model got")
         self.__model = self.__model.to(self.device)
+        print("model finish moving")
 
         print(" choosing loss function and optimizer")
         if  config["experiment"]["loss_func"] == "MSE":
@@ -65,7 +70,6 @@ class Experiment(object):
         lr_step = config["experiment"]["lr_scheduler_step"]       
         self.lr_scheduler_type = config["experiment"]["lr_scheduler_type"]
         print(self.lr_scheduler_type)
-
         if self.lr_scheduler_type == "step":
             self.__lr_scheduler = torch.optim.lr_scheduler.StepLR(self.__optimizer, lr_step[0])
         elif self.lr_scheduler_type == "multi_step":
@@ -85,19 +89,23 @@ class Experiment(object):
         if self.config['model']['model_type'] == 'filter':
             return
         for epoch in range( self.__epochs):  # loop over the dataset multiple times
-            train_loss = self.__train()
-            val_loss = self.__val()
-            self.__record_stats(train_loss, val_loss)
+            print("epoch: ",epoch)
+            train_loss, train_accu = self.__train()
+            val_loss,val_accu = self.__val()
+            
             if self.__lr_scheduler is not None:
                 if self.lr_scheduler_type == "criterion":
                     self.__lr_scheduler.step(val_loss)
                 else: 
                     self.__lr_scheduler.step()
+            self.__record_stats(train_loss,train_accu, val_loss,val_accu)
+        self.plot_stats()
 
 
     def __train(self):
         self.__model.train()
         training_loss = 0
+        training_accu = 0
         # temp
         # Iterate over the data, implement the training function
         for iter, data in enumerate(tqdm(self.__train_loader)):
@@ -109,12 +117,17 @@ class Experiment(object):
             # prediction = prediction.type(torch.float32)
             # print(prediction.shape, raw.shape)
             loss=self.__criterion(prediction,raw )
+            with torch.no_grad():
+                accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
             loss.backward()
             self.__optimizer.step()
             training_loss+=loss.item()
+            training_accu+=accu.item()
         training_loss/=(iter+1)
+        training_accu/=(iter+1)
         
-        return training_loss
+        
+        return training_loss,training_accu
 
     def __val(self):
         print("validating stage")
@@ -129,8 +142,9 @@ class Experiment(object):
                 prediction = self.__model.forward(noise)
                 
                 # find accuracy
-                batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
-                accu.append(batch_accu)
+                with torch.no_grad():
+                    batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
+                    accu.append(batch_accu)
 
                 # find loss
                 # prediction = prediction.type(torch.float32)
@@ -144,8 +158,8 @@ class Experiment(object):
         output_msg = "Current validation loss: " + str(val_loss)
         # send_discord_msg(output_msg)
 
-        print((sum(accu) / len(accu)).data)        
-        return val_loss
+           
+        return val_loss,(sum(accu) / len(accu)).item()  
 
     def test(self):
         print("testing stage")
@@ -220,11 +234,11 @@ class Experiment(object):
             self.__model = self.__model.cuda().float()
             self.__criterion = self.__criterion.cuda()
 
-    def __record_stats(self, train_loss, val_loss):
+    def __record_stats(self, train_loss,train_accu, val_loss,val_accu):
         self.__training_losses.append(train_loss)
         self.__val_losses.append(val_loss)
-
-        self.plot_stats()
+        self.__training_accu.append(train_accu)
+        self.__val_accu.append(val_accu)
 
         write_to_file_in_dir(self.__experiment_dir, 'training_losses.txt', self.__training_losses)
         write_to_file_in_dir(self.__experiment_dir, 'val_losses.txt', self.__val_losses)
@@ -243,9 +257,20 @@ class Experiment(object):
         plt.plot(x_axis, self.__val_losses, label="Validation Loss")
         plt.xlabel("Epochs")
         plt.legend(loc='best')
-        plt.title(self.__name + " Stats Plot")
-        plt.savefig(os.path.join(self.__experiment_dir, "stat_plot.png"))
+        plt.title(self.__name + " Loss Plot")
+        plt.savefig(os.path.join(self.__experiment_dir, "loss_plot.png"))
         # plt.show()
+        
+        plt.clf()
+        e = len(self.__training_accu)
+        x_axis = np.arange(1, e + 1, 1)
+        plt.figure()
+        plt.plot(x_axis, self.__training_accu, label="Training Accuracy")
+        plt.plot(x_axis, self.__val_accu, label="Validation Accuracy")
+        plt.xlabel("Epochs")
+        plt.legend(loc='best')
+        plt.title(self.__name + " Accu Plot")
+        plt.savefig(os.path.join(self.__experiment_dir, "accu_plot.png"))
 
 def write_to_file_in_dir(root_dir, file_name, data):
     path = os.path.join(root_dir, file_name)
