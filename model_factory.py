@@ -1,7 +1,6 @@
 import numpy as np
 import sys
 import matplotlib.pyplot as plt
-from sqlalchemy import true
 import torch.nn as nn
 import torch
 
@@ -41,10 +40,14 @@ class denoising_model(nn.Module):
  
   def forward(self,x):
     x=  torch.flatten(x, start_dim=1)
-    print ("input shape", x.shape)
+    # print ("input shape", x.shape)
+    # print ("input type", type(x))
+    # print ("input data type", x.dtype)
+
     x=self.encoder(x)
     x=self.decoder(x)
-    
+    # print("before reshape",x.shape)
+    x=torch.reshape(x,(-1,100,100))
     return x
 
 

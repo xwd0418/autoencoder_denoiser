@@ -101,11 +101,12 @@ class Experiment(object):
         # Iterate over the data, implement the training function
         for iter, data in enumerate(tqdm(self.__train_loader)):
             raw, noise = data
-            raw, noise = raw.cuda(), noise.cuda()
+            raw, noise = raw.cuda().float(), noise.cuda().float()
            
             self.__optimizer.zero_grad()          
             prediction = self.__model.forward(noise)
             # prediction = prediction.type(torch.float32)
+            # print(prediction.shape, raw.shape)
             loss=self.__criterion(prediction,raw )
             loss.backward()
             self.__optimizer.step()
@@ -115,13 +116,22 @@ class Experiment(object):
         return training_loss
 
     def __val(self):
+        print("validating stage")
+
+        accu = []
         self.__model.eval()
         val_loss = 0
         with torch.no_grad():
             for iter, data in enumerate(tqdm(self.__val_loader)):
                 raw, noise = data
-                raw, noise = raw.cuda(), noise.cuda()
-                prediction = self.__model(noise)
+                raw, noise = raw.cuda().float(), noise.cuda().float()
+                prediction = self.__model.forward(noise)
+                
+                # find accuracy
+                batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
+                accu.append(batch_accu)
+
+                # find loss
                 # prediction = prediction.type(torch.float32)
                 loss=self.__criterion(prediction,raw )
                 val_loss+=loss.item()            
@@ -132,29 +142,57 @@ class Experiment(object):
             self.best_epoch = self.__current_epoch
         output_msg = "Current validation loss: " + str(val_loss)
         # send_discord_msg(output_msg)
+
+        print((sum(accu) / len(accu)).data)        
         return val_loss
 
     def test(self):
+        print("testing stage")
         accu = []
         displayed = False
+
+        """if filter """
         if self.config['model']['model_type'] == 'filter':
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = data
-                if not displayed:
-                    ax = plt.subplot(1, 4, 1)
-                    plt.tight_layout()
-                    ax.set_title('orig')
-                    ax.axis('off')
-                    plt.imshow(raw[0])
-                    displayed = True
-                perdiction = self.__model(noise)
+                raw, noise = raw.cuda().float(), noise.cuda().float()
+                # if not displayed:
+                #     ax = plt.subplot(1, 4, 1)
+                #     plt.tight_layout()
+                #     ax.set_title('orig')
+                #     ax.axis('off')
+                #     plt.imshow(raw[0])
+                #     displayed = True
+                prediction = self.__model(noise)
                 
                 # print (torch.sum(raw))
                 # print (np.sum(np.array(raw) * perdiction ))
-                batch_accu = np.sum(np.array(raw) * perdiction )/(torch.sum(raw))
+                batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
                 accu.append(batch_accu)
-                print(accu)
-            print(sum(accu) / len(accu))
+                # print(accu)
+            print((sum(accu) / len(accu)))
+            return sum(accu) / len(accu)
+
+        """if auto encoder"""
+        with torch.no_grad():
+            for iter, data in enumerate(tqdm(self.__test_loader)):
+                raw, noise = data
+                raw, noise = raw.cuda().float(), noise.cuda().float()
+                # if not displayed:
+                #     ax = plt.subplot(1, 4, 1)
+                #     plt.tight_layout()
+                #     ax.set_title('orig')
+                #     ax.axis('off')
+                #     plt.imshow(raw[0])
+                #     displayed = True
+                prediction = self.__model(noise).data
+                
+                # print (torch.sum(raw))
+                # print (np.sum(np.array(raw) * perdiction ))
+                batch_accu = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))/(torch.sum(raw))
+                accu.append(batch_accu)
+                # print(accu)
+            print((sum(accu) / len(accu)))
             return sum(accu) / len(accu)
 
     def __init_model(self):
@@ -176,6 +214,18 @@ class Experiment(object):
         model_dict = self.__model.state_dict()
         state_dict = {'model': model_dict, 'optimizer': self.__optimizer.state_dict()}
         torch.save(state_dict, root_model_path)
+
+    def plot_stats(self):
+        e = len(self.__training_losses)
+        x_axis = np.arange(1, e + 1, 1)
+        plt.figure()
+        plt.plot(x_axis, self.__training_losses, label="Training Loss")
+        plt.plot(x_axis, self.__val_losses, label="Validation Loss")
+        plt.xlabel("Epochs")
+        plt.legend(loc='best')
+        plt.title(self.__name + " Stats Plot")
+        plt.savefig(os.path.join(self.__experiment_dir, "stat_plot.png"))
+        # plt.show()
 
 def write_to_file_in_dir(root_dir, file_name, data):
     path = os.path.join(root_dir, file_name)
