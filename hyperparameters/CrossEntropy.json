@@ -15,7 +15,7 @@
       "lr_scheduler_type": "multi_step"
     },
     "model": {
-        "model_type": "vanilla"
+        "model_type": "MLP"
       }
   }
   

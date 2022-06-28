@@ -1,2 +1,5 @@
 *.yaml
 *.npy
+*.pyc
+*.pt
+experiment_data/*

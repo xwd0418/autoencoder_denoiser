@@ -42,11 +42,15 @@ class HSQC_Dataset(Dataset):
         noisy_sample = raw_sample + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=raw_sample.shape)
         noisy_sample = np.clip(noisy_sample, 0., 1.)
 
+        if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
+            raw_sample = np.expand_dims(raw_sample, axis=0)
+            noisy_sample = np.expand_dims(noisy_sample, axis=0)
+
         return raw_sample,noisy_sample
 
 
 def get_datasets(config):
-    np.random.shuffle(all_data)
+    # np.random.shuffle(all_data)
     first = int(len(all_data)*0.8)
     second = int(len(all_data)*0.9)
 

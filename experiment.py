@@ -14,7 +14,8 @@ ROOT_STATS_DIR = "./experiment_data"
 class Experiment(object):
     def __init__(self, name):
         f = open('./hyperparameters/'+ name + '.json')
-        config = data = json.load(f)
+        config = json.load(f)
+        config['experiment_name'] = name
         self.config = config
         self.best_model = None
 
@@ -45,7 +46,7 @@ class Experiment(object):
 
         # Init Model
         self.__model = get_model(config)
-        self.__model = torch.nn.DataParallel(self.__model)
+        # self.__model = torch.nn.DataParallel(self.__model)
         
         if config['model']['model_type'] == 'filter':
             return None
@@ -64,8 +65,10 @@ class Experiment(object):
         print(" choosing loss function and optimizer")
         if  config["experiment"]["loss_func"] == "MSE":
             self.__criterion = torch.nn.MSELoss()
-        else :
+        elif config["experiment"]["loss_func"] == "CrossEntropy":
             self.__criterion = torch.nn.CrossEntropyLoss() # edited
+        else:
+            raise Exception("what is your loss function??")
         
         self.__optimizer = torch.optim.Adam(self.__model.parameters(), lr = self.__learning_rate) # edited
 
@@ -116,14 +119,27 @@ class Experiment(object):
             raw, noise = data
             raw, noise = raw.cuda().float(), noise.cuda().float()
            
-            self.__optimizer.zero_grad()          
+            self.__optimizer.zero_grad()
+            # print ("noise shape",noise.shape)        
+            
             prediction = self.__model.forward(noise)
             # prediction = prediction.type(torch.float32)
             # print(prediction.shape, raw.shape)
-            loss=self.__criterion(prediction,raw )
+            ground_truth = raw
+            if self.config["experiment"]["loss_func"] == "CrossEntropy":
+                ground_truth = raw[:,0,:,:]
+            loss=self.__criterion(prediction,ground_truth )
+            prediction = prediction.int()
             with torch.no_grad():
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
-                accu =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)
+                union = torch.sum(raw)+torch.sum(prediction)-intersec
+                accu =intersec / union
+                if (accu > 1) :
+                    print("bug!")
+                    print("raw is ", torch.sum(raw))
+                    print("predict is ",torch.sum(prediction) )
+                    print("interesct is ", intersec )
+                    print("union is " , union)
             loss.backward()
             self.__optimizer.step()
             training_loss+=loss.item()
@@ -143,29 +159,45 @@ class Experiment(object):
         with torch.no_grad():
             for iter, data in enumerate(tqdm(self.__val_loader)):
                 raw, noise = data
-                raw, noise = raw.cuda().float(), noise.cuda().float()
+                raw, noise = raw.cuda(), noise.cuda().float()
                 prediction = self.__model.forward(noise)
                 
+                # find loss
+                # prediction = prediction.type(torch.float32)
+                ground_truth = raw
+                if self.config["experiment"]["loss_func"] == "CrossEntropy":
+                    ground_truth = raw[:,0,:,:]
+                loss=self.__criterion(prediction,ground_truth )
+                val_loss+=loss.item() 
+                
+                #make prediction to int values
+                prediction = prediction.int()
+                
+                #draw sample pics
                 if self.__current_epoch%35==0 and iter==0:
+                    
+                    if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
+                        noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
+                    else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
                     plt.clf()
 
                     ax = plt.subplot(1, 3, 1)
                     plt.tight_layout()
                     ax.set_title('orig')
                     ax.axis('off')
-                    plt.imshow(raw[0].cpu())
+                    plt.imshow(raw_pic[0].cpu())
 
                     ax = plt.subplot(1, 3, 2)
                     plt.tight_layout()
                     ax.set_title('noise')
                     ax.axis('off')
-                    plt.imshow(noise[0].cpu())
+                    plt.imshow(noise_pic[0].cpu())
 
                     ax = plt.subplot(1, 3, 3)
                     plt.tight_layout()
                     ax.set_title('predicted')
                     ax.axis('off')
-                    plt.imshow(prediction[0].cpu())
+                    plt.imshow(prediction_pic[0].cpu())
 
                     plt.savefig(os.path.join(self.__experiment_dir, "epoch_{}_sample_images.png".format(str(self    .__current_epoch))))
                     displayed = True
@@ -176,10 +208,7 @@ class Experiment(object):
                 batch_accu =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)                   
                 accu.append(batch_accu)
 
-                # find loss
-                # prediction = prediction.type(torch.float32)
-                loss=self.__criterion(prediction,raw )
-                val_loss+=loss.item()            
+           
         val_loss = val_loss/(iter+1)
         if val_loss < self.__min_val_loss:
             self.__min_val_loss = val_loss
@@ -189,7 +218,8 @@ class Experiment(object):
         output_msg = "Current validation loss: " + str(val_loss)
         # send_discord_msg(output_msg)
 
-        print("val accuracy", (sum(accu) / len(accu)).item()  )   
+        print("val accuracy", (sum(accu) / len(accu)).item()  )  
+        print("loss: ", val_loss) 
         return val_loss,(sum(accu) / len(accu)).item()  
 
     def test(self):
@@ -201,14 +231,37 @@ class Experiment(object):
         if self.config['model']['model_type'] == 'filter':
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = data
-                # if not displayed:
-                #     ax = plt.subplot(1, 4, 1)
-                #     plt.tight_layout()
-                #     ax.set_title('orig')
-                #     ax.axis('off')
-                #     plt.imshow(raw[0])
-                #     displayed = True
                 prediction = self.__model(noise)
+                
+                prediction = prediction.int()
+                
+                if not displayed:
+                    noise_pic , prediction_pic, raw_pic = noise,prediction, raw
+                    plt.clf()
+
+                    ax = plt.subplot(1, 3, 1)
+                    plt.tight_layout()
+                    ax.set_title('orig')
+                    ax.axis('off')
+                    plt.imshow(raw_pic[0])
+
+                    ax = plt.subplot(1, 3, 2)
+                    plt.tight_layout()
+                    ax.set_title('noise')
+                    ax.axis('off')
+                    plt.imshow(noise_pic[0])
+
+                    ax = plt.subplot(1, 3, 3)
+                    plt.tight_layout()
+                    ax.set_title('predicted')
+                    ax.axis('off')
+                    plt.imshow(prediction_pic[0])
+
+                    plt.savefig(os.path.join(self.__experiment_dir, "sample_images.png"))
+                    displayed = True
+                    plt.clf()
+                    
+                
                 
                 # print (torch.sum(raw))
                 # print (np.sum(np.array(raw) * perdiction )) 
@@ -220,7 +273,7 @@ class Experiment(object):
             print((sum(accu) / len(accu)))
             return sum(accu) / len(accu)
 
-        """if auto encoder"""
+        """if auto encoder i.e. not using filter"""
         with torch.no_grad():
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = data
@@ -228,25 +281,29 @@ class Experiment(object):
                 prediction = self.best_model(noise).data
 
                 if not displayed:
+                    if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
+                        noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
+                    else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
+                    
                     plt.clf()
 
                     ax = plt.subplot(1, 3, 1)
                     plt.tight_layout()
                     ax.set_title('orig')
                     ax.axis('off')
-                    plt.imshow(raw[0].cpu())
+                    plt.imshow(raw_pic[0].cpu())
 
                     ax = plt.subplot(1, 3, 2)
                     plt.tight_layout()
                     ax.set_title('noise')
                     ax.axis('off')
-                    plt.imshow(noise[0].cpu())
+                    plt.imshow(noise_pic[0].cpu())
 
                     ax = plt.subplot(1, 3, 3)
                     plt.tight_layout()
                     ax.set_title('predicted')
                     ax.axis('off')
-                    plt.imshow(prediction[0].cpu())
+                    plt.imshow(prediction_pic[0].cpu())
 
                     plt.savefig(os.path.join(self.__experiment_dir, "sample_images.png"))
                     displayed = True
@@ -286,6 +343,7 @@ class Experiment(object):
         torch.save(state_dict, root_model_path)
 
     def plot_stats(self):
+        #training
         e = len(self.__training_losses)
         x_axis = np.arange(1, e + 1, 1)
         plt.figure()
@@ -295,8 +353,8 @@ class Experiment(object):
         plt.legend(loc='best')
         plt.title(self.__name + " Loss Plot")
         plt.savefig(os.path.join(self.__experiment_dir, "loss_plot.png"))
-        # plt.show()
         
+        #validation        
         plt.clf()
         e = len(self.__training_accu)
         x_axis = np.arange(1, e + 1, 1)
@@ -307,6 +365,34 @@ class Experiment(object):
         plt.legend(loc='best')
         plt.title(self.__name + " Accu Plot")
         plt.savefig(os.path.join(self.__experiment_dir, "accu_plot.png"))
+        
+        
+        if len(self.__training_losses) >5 :
+            #training without first few
+            plt.clf()
+            e = len(self.__training_losses) -5
+            x_axis = np.arange(1, e + 1, 1)
+            plt.figure()
+            plt.plot(x_axis, self.__training_losses[5:], label="Training Loss")
+            plt.plot(x_axis, self.__val_losses[5:], label="Validation Loss")
+            plt.xlabel("Epochs")
+            plt.legend(loc='best')
+            plt.title(self.__name + " Loss Plot")
+            plt.savefig(os.path.join(self.__experiment_dir, "loss_plot_without_heads.png"))
+            
+            #training without first few
+            plt.clf()
+            e = len(self.__training_losses) -5
+            x_axis = np.arange(1, e + 1, 1)
+            plt.figure()
+            plt.plot(x_axis, self.__training_accu[5:], label="Training Accu")
+            plt.plot(x_axis, self.__val_accu[5:], label="Validation Accu")
+            plt.xlabel("Epochs")
+            plt.legend(loc='best')
+            plt.title(self.__name + " Accu Plot")
+            plt.savefig(os.path.join(self.__experiment_dir, "accu_plot_without_heads.png"))
+            
+            
 
 def write_to_file_in_dir(root_dir, file_name, data):
     path = os.path.join(root_dir, file_name)
@@ -314,4 +400,4 @@ def write_to_file_in_dir(root_dir, file_name, data):
 
 def write_to_file(path, data):
     with open(path, "w") as outfile:
-        json.dump(data, outfile)
+        json.dump(data, outfile, indent=2)
