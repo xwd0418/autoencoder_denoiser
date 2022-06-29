@@ -19,7 +19,7 @@ for iter, data in enumerate(tqdm(train_loader)):
     raw, noise = data
     break
 
-prediction = noise.int()
+prediction = noise.round()
 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
 union = torch.sum(raw)+torch.sum(prediction)-intersec
 accu =intersec / union
@@ -49,8 +49,10 @@ ax = plt.subplot(1, 3, 3)
 plt.tight_layout()
 ax.set_title('predicted')
 ax.axis('off')
-plt.imshow(noise[0].int().cpu())
+plt.imshow(prediction[0].cpu())
 
 plt.savefig("accu_test_sample.png")
 displayed = True
 plt.clf()
+
+

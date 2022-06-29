@@ -129,7 +129,7 @@ class Experiment(object):
             if self.config["experiment"]["loss_func"] == "CrossEntropy":
                 ground_truth = raw[:,0,:,:]
             loss=self.__criterion(prediction,ground_truth )
-            prediction = prediction.int()
+            prediction = torch.clip(prediction.round(),0,1)
             with torch.no_grad():
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
                 union = torch.sum(raw)+torch.sum(prediction)-intersec
@@ -140,6 +140,7 @@ class Experiment(object):
                     print("predict is ",torch.sum(prediction) )
                     print("interesct is ", intersec )
                     print("union is " , union)
+                    
             loss.backward()
             self.__optimizer.step()
             training_loss+=loss.item()
@@ -171,7 +172,7 @@ class Experiment(object):
                 val_loss+=loss.item() 
                 
                 #make prediction to int values
-                prediction = prediction.int()
+                prediction = torch.clip(prediction.round(),0,1)
                 
                 #draw sample pics
                 if self.__current_epoch%35==0 and iter==0:
@@ -233,7 +234,7 @@ class Experiment(object):
                 raw, noise = data
                 prediction = self.__model(noise)
                 
-                prediction = prediction.int()
+                prediction = torch.clip(prediction.round(),0,1)
                 
                 if not displayed:
                     noise_pic , prediction_pic, raw_pic = noise,prediction, raw

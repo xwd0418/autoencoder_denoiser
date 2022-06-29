@@ -98,7 +98,7 @@ class CNN_encoding_model(nn.Module):
         self.encoder=models.resnet50()
         self.encoder.conv1=torch.nn.Conv2d(1,64,7,stride =2,padding =3,bias=False)
         self.encoder.fc = Identity()
-        print(self.encoder)
+        # print(self.encoder)
         
         self.decoder=nn.Sequential(
                   nn.Linear(2048,4096),
