@@ -7,7 +7,7 @@
       "num_workers": 4
     },
     "experiment": {
-      "num_epochs": 110,
+      "num_epochs": 0,
       "learning_rate": 5e-6,
       "loss_func":"MSE",
       "lr_step": 0,

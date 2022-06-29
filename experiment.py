@@ -25,10 +25,8 @@ class Experiment(object):
         self.name=name
         self.__name = config['experiment_name']
 
-        #make directory for this experiement
+        # make directory for this experiement
         self.__experiment_dir = os.path.join(ROOT_STATS_DIR, self.__name)
-        if not os.path.exists(self.__experiment_dir):
-            os.makedirs(self.__experiment_dir)
 
         # Load Datasets
         self.__train_loader, self.__val_loader, self.__test_loader = get_datasets(config)
@@ -90,7 +88,31 @@ class Experiment(object):
         self.__init_model()
 
         # Load Experiment Data if available
-        # self.__load_experiment()
+        self.__load_experiment()
+
+    # Loads the experiment data if exists to resume training from last saved checkpoint.
+    def __load_experiment(self):
+        os.makedirs(ROOT_STATS_DIR, exist_ok=True)
+
+        if os.path.exists(self.__experiment_dir):
+            try:
+                training_losses = read_file_in_dir(self.__experiment_dir, 'training_losses.txt')
+                val_losses = read_file_in_dir(self.__experiment_dir, 'val_losses.txt')
+                current_epoch = len(self.__training_losses)
+                state_dict = torch.load(os.path.join(self.__experiment_dir, 'latest_model.pt'))
+
+                self.__model.load_state_dict(state_dict['model'])
+                self.__optimizer.load_state_dict(state_dict['optimizer'])
+
+                self.__training_losses = training_losses
+                self.__val_losses = val_losses
+                self.__current_epoch = current_epoch
+            except NotRegularFileError:
+                print('Reading last expriment failed, removing folder')
+                shutil.rmtree(self.__experiment_dir)
+                os.makedirs(self.__experiment_dir)
+        else:
+            os.makedirs(self.__experiment_dir)
 
     def run(self):
         if self.config['model']['model_type'] == 'filter':
@@ -402,3 +424,18 @@ def write_to_file_in_dir(root_dir, file_name, data):
 def write_to_file(path, data):
     with open(path, "w") as outfile:
         json.dump(data, outfile, indent=2)
+   
+class NotRegularFileError(Exception):
+    pass
+     
+def read_file_in_dir(root_dir, file_name):
+    path = os.path.join(root_dir, file_name)
+    return read_file(path)
+
+def read_file(path):
+    if os.path.isfile(path):
+        with open(path) as json_file:
+            data = json.load(json_file)
+        return data
+    else:
+        raise NotRegularFileError("not an existing regular file: ", path)
