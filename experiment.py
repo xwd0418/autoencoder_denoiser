@@ -107,6 +107,7 @@ class Experiment(object):
                 self.__training_losses = training_losses
                 self.__val_losses = val_losses
                 self.__current_epoch = current_epoch
+                print("Successfully loaded previous model")
             except NotRegularFileError:
                 print('Reading last expriment failed, removing folder')
                 shutil.rmtree(self.__experiment_dir)
@@ -236,6 +237,7 @@ class Experiment(object):
         if val_loss < self.__min_val_loss:
             self.__min_val_loss = val_loss
             self.__save_model()
+            print("best model updated")
             self.best_epoch = self.__current_epoch
             self.best_model = copy.deepcopy(self.__model)
         output_msg = "Current validation loss: " + str(val_loss)
