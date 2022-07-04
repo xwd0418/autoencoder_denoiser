@@ -2,8 +2,10 @@
     "experiment_name": "trivia_",
     "dataset": {
       "shuffle": false,
-      "noise_factor": 0.01,
+      "noise_factor": 0.2,
+      "noise_type": "gaussian",
       "batch_size": 64,
+      "pre-filtered": false,
       "num_workers": 4
     },
     "experiment": {

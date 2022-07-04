@@ -9,6 +9,7 @@ import torch, copy
 from tqdm import tqdm
 from datetime import datetime
 import shutil
+from apis import get_cuda_num , release_cuda
 
 ROOT_STATS_DIR = "./experiment_data"
 class Experiment(object):
@@ -52,11 +53,12 @@ class Experiment(object):
         
 
         # Also assign GPU to device
+        cuda_num = get_cuda_num()
         self.device = torch.device(
-            "cuda:0" if torch.cuda.is_available() else "cpu"
+            "cuda:{}".format(cuda_num) if torch.cuda.is_available() else "cpu"
         )
         
-        print("model got")
+        print("model using cuda #{}".format(cuda_num))
         self.__model = self.__model.to(self.device)
         print("model finish moving")
 
@@ -98,7 +100,11 @@ class Experiment(object):
             try:
                 training_losses = read_file_in_dir(self.__experiment_dir, 'training_losses.txt')
                 val_losses = read_file_in_dir(self.__experiment_dir, 'val_losses.txt')
-                current_epoch = len(self.__training_losses)
+                self.__training_accu = read_file_in_dir(self.__experiment_dir, 'training_accu.txt')
+                self.__val_accu = read_file_in_dir(self.__experiment_dir, 'val_accu.txt')
+
+                current_epoch = len(self.__training_accu)
+ 
                 state_dict = torch.load(os.path.join(self.__experiment_dir, 'latest_model.pt'))
 
                 self.__model.load_state_dict(state_dict['model'])
@@ -118,7 +124,8 @@ class Experiment(object):
     def run(self):
         if self.config['model']['model_type'] == 'filter':
             return
-        for self.__current_epoch in range( self.__epochs):  # loop over the dataset multiple times
+        for i in range( self.__epochs):  # loop over the dataset multiple times
+            self.__current_epoch+=1
             print("epoch: ",self.__current_epoch)
             train_loss, train_accu = self.__train()
             val_loss,val_accu = self.__val()
@@ -157,7 +164,7 @@ class Experiment(object):
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
                 union = torch.sum(raw)+torch.sum(prediction)-intersec
                 accu =intersec / union
-                if (accu > 1) :
+                if (accu > 1 or accu < 0) :
                     print("bug!")
                     print("raw is ", torch.sum(raw))
                     print("predict is ",torch.sum(prediction) )
@@ -198,7 +205,7 @@ class Experiment(object):
                 prediction = torch.clip(prediction.round(),0,1)
                 
                 #draw sample pics
-                if self.__current_epoch%35==0 and iter==0:
+                if self.__current_epoch% 15 ==0 and iter==0:
                     
                     if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
                         noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
@@ -234,22 +241,23 @@ class Experiment(object):
 
            
         val_loss = val_loss/(iter+1)
+        
+        print("val accuracy", (sum(accu) / len(accu)).item()  )  
+        print("loss: ", val_loss) 
+
         if val_loss < self.__min_val_loss:
             self.__min_val_loss = val_loss
             self.__save_model()
             print("best model updated")
             self.best_epoch = self.__current_epoch
             self.best_model = copy.deepcopy(self.__model)
-        output_msg = "Current validation loss: " + str(val_loss)
-        # send_discord_msg(output_msg)
 
-        print("val accuracy", (sum(accu) / len(accu)).item()  )  
-        print("loss: ", val_loss) 
         return val_loss,(sum(accu) / len(accu)).item()  
 
     def test(self):
         print("testing stage")
         accu = []
+        test_loss= 0
         displayed = False
 
         """if filter """
@@ -295,7 +303,8 @@ class Experiment(object):
                 # batch_accu = np.sum(np.array(raw) * np.array(prediction ))/(np.sum(raw)+np.sum(prediction))
                 accu.append(batch_accu)
                 # print(accu)
-            print((sum(accu) / len(accu)))
+            print("avg testing accuracy is ",(sum(accu) / len(accu)))
+            
             return sum(accu) / len(accu)
 
         """if auto encoder i.e. not using filter"""
@@ -304,7 +313,14 @@ class Experiment(object):
                 raw, noise = data
                 raw, noise = raw.cuda().float(), noise.cuda().float()
                 prediction = self.best_model(noise).data
-
+                prediction = torch.clip(prediction.round(),0,1)
+                
+                ground_truth = raw
+                if self.config["experiment"]["loss_func"] == "CrossEntropy":
+                    ground_truth = raw[:,0,:,:]
+                loss=self.__criterion(prediction,ground_truth )
+                test_loss+=loss.item() 
+                
                 if not displayed:
                     if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
                         noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
@@ -339,11 +355,25 @@ class Experiment(object):
                 # print (np.sum(np.array(raw) * perdiction ))
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
-                batch_accu =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)
+                union = (torch.sum(raw)+torch.sum(prediction)-intersec)
+                batch_accu =intersec / union
                 accu.append(batch_accu)
+                if (batch_accu > 1 or batch_accu < 0) :
+                    print("bug!")
+                    print("raw is ", torch.sum(raw))
+                    print("predict is ",torch.sum(prediction) )
+                    print("interesct is ", intersec )
+                    print("union is " , union)
                 # print(accu)
-            print((sum(accu) / len(accu)))
-            return sum(accu) / len(accu)
+                
+            test_loss /= len(accu)
+            avg_accu = (sum(accu) / len(accu)).item()
+            print("avg testing accuracy is ",avg_accu)
+            print("avg testing loss is ", test_loss)
+            
+            output_msg = {"loss":test_loss, "accuracy":avg_accu}
+            write_to_file_in_dir(self.__experiment_dir, 'testing result.txt', output_msg)
+            return avg_accu
 
     def __init_model(self):
         if torch.cuda.is_available():

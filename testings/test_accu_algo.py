@@ -1,3 +1,5 @@
+# originally used to check the computation of accuracy (IoU)
+# now it is used to demo some raw/noised/pre_filtered image
 import json
 import os
 from dataloader import get_datasets

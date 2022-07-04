@@ -2,12 +2,15 @@
     "experiment_name": "Unet_experiment",
     "dataset": {
       "shuffle": true,
+      "pre-filtered": false,
+      "noise_type": "gaussian",
       "noise_factor": 0.15,
       "batch_size": 64,
       "num_workers": 4
+      
     },
     "experiment": {
-      "num_epochs": 0,
+      "num_epochs": 120,
       "learning_rate": 5e-7,
       "loss_func":"MSE",
       "lr_step": 0,

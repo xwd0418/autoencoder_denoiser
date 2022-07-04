@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 
 # imgs = []
@@ -36,18 +37,41 @@ class HSQC_Dataset(Dataset):
     def __getitem__(self, idx):
         raw_sample = self.all_data[idx]
         if self.config:
-            noise_factor = self.config["dataset"]["noise_factor"]
+            if self.config["dataset"]["noise_factor"] == "random":
+                noise_factor = random.uniform(0.1,0.3)
+            else:
+                noise_factor = self.config["dataset"]["noise_factor"]
         else :
-            noise_factor = 0.4
-        noisy_sample = raw_sample + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=raw_sample.shape)
+            noise_factor = 0.3
+
+
+        # add noise based on provided noise type
+        if self.config["dataset"]["noise_type"] == "random":
+            self.config["dataset"]["noise_type"] = random.choice(["gaussian", "white" ])
+        if self.config["dataset"]["noise_type"] == "gaussian":
+            noisy_sample = raw_sample + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=raw_sample.shape)
+        elif self.config["dataset"]["noise_type"] == "white":    
+            noisy_sample = raw_sample + noise_factor * np.random.uniform(low=0.0, high=1.5, size=raw_sample.shape)
+        else:
+            raise Exception("unkown type of noise {}".format(self.config["dataset"]["noise_type"]))
         noisy_sample = np.clip(noisy_sample, 0., 1.)
 
         if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
             raw_sample = np.expand_dims(raw_sample, axis=0)
             noisy_sample = np.expand_dims(noisy_sample, axis=0)
 
+        if self.config["dataset"]["pre-filtered"]:
+            noisy_sample = np.array([[[filtering(float(k)) for k in j] for j in i] for i in noisy_sample])
+        
+        if self.config["dataset"]["tessellate"]:
+            print(raw_sample)
+            
+        
         return raw_sample,noisy_sample
 
+def filtering(x):
+    if x>=0.6: return x
+    return 0
 
 def get_datasets(config):
     # np.random.shuffle(all_data)
