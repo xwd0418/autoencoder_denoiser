@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+from tessellate import triangle_tessellate , expand
+
 
 # imgs = []
 print("loading data ...")
@@ -64,14 +66,22 @@ class HSQC_Dataset(Dataset):
             noisy_sample = np.array([[[filtering(float(k)) for k in j] for j in i] for i in noisy_sample])
         
         if self.config["dataset"]["tessellate"]:
-            print(raw_sample)
+            # tessellated_raw = triangle_tessellate( raw_sample)
+            # tessellated_raw = np.expand_dims(tessellated_raw, axis=0)
+            # raw_sample = np.stack((expand(raw_sample), tessellated_raw), axis=0)
+            
+            selected_noisy_sample = np.array([[selecting(float(j)) for j in i] for i in noisy_sample])
+            tessellated_noise = triangle_tessellate( selected_noisy_sample)
+            # tessellated_noise = np.expand_dims(tessellated_noise, axis=0)
+            # noisy_sample = np.stack((expand(noisy_sample), tessellated_noise), axis=0)
+            
+            return raw_sample,( noisy_sample, tessellated_noise)
+
             
         
         return raw_sample,noisy_sample
 
-def filtering(x):
-    if x>=0.6: return x
-    return 0
+ 
 
 def get_datasets(config):
     # np.random.shuffle(all_data)
@@ -91,34 +101,12 @@ def get_datasets(config):
     return train_loader, val_loader , test_loader
 
 
+"""some helper functions to pre_process data"""
+def selecting(x):
+    if x>=0.6: return 1
+    return 0
 
+def filtering(x):
+    if x>=0.6: return x
+    return 0
 
-
-#### used to show some sample image
-# dataset = HSQC_Dataset(all_data,)
-# dataloader = DataLoader(dataset, batch_size=4, shuffle=False, num_workers=0)
-# fig = plt.figure()
-# for i in range(len(dataset)):
-#     sample = dataset[i][0]
-#     noise_sample = dataset[i][1]
-#     # print(i, sample.shape)
-
-#     ax = plt.subplot(1, 4, 2*i + 1)
-#     plt.tight_layout()
-#     ax.set_title('Sample #{}'.format(i))
-#     ax.axis('off')
-#     plt.imshow(sample)
-
-#     ax = plt.subplot(1, 4, 2*i +2 )
-#     plt.tight_layout()
-#     ax.set_title('noise Sample #{}'.format(i))
-#     ax.axis('off')
-#     plt.imshow(noise_sample)
-#     plt.savefig("useless/{}.png".format(str(i)))
-
-#     if i == 1:
-#         plt.show()
-#         break
-
-# np.set_printoptions(threshold=sys.maxsize)
-# print(dataset[i][1])

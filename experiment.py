@@ -9,7 +9,6 @@ import torch, copy
 from tqdm import tqdm
 from datetime import datetime
 import shutil
-from apis import get_cuda_num , release_cuda
 
 ROOT_STATS_DIR = "./experiment_data"
 class Experiment(object):
@@ -53,7 +52,7 @@ class Experiment(object):
         
 
         # Also assign GPU to device
-        cuda_num = get_cuda_num()
+        cuda_num = '1'
         self.device = torch.device(
             "cuda:{}".format(cuda_num) if torch.cuda.is_available() else "cpu"
         )

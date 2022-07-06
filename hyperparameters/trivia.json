@@ -3,9 +3,10 @@
     "dataset": {
       "shuffle": false,
       "noise_factor": 0.2,
-      "noise_type": "gaussian",
+      "noise_type": "white",
       "batch_size": 64,
       "pre-filtered": false,
+      "tessellate": true,
       "num_workers": 4
     },
     "experiment": {

@@ -5,7 +5,7 @@
       "noise_type": "white",
       "noise_factor": "random",
       "pre-filtered": false,
-      "tessellate": false,
+      "tessellate": true,
       "batch_size": 64,
       "num_workers": 4
     },

@@ -14,14 +14,15 @@ def triangle_tessellate(img1):
     points = np.array(np.where(img1==1)).T 
     
     #find triangles to draw
-    tri = Delaunay(points)                  
+    try :
+        tri = Delaunay(points)        
+    except:
+        return expand(img1)    
+          
     triangles = points[tri.simplices[:]]
     
     triangles = triangles[:,:,[1,0]]     # swap column to match original image
     triangles = scale_factor*triangles   # for better resolution 
-
-
-    import matplotlib.pyplot as plt
 
     # Blue color in BGR
     color = (1)
@@ -40,4 +41,14 @@ def triangle_tessellate(img1):
                         True, color, thickness)
         
     return output_img
-        
+       
+def expand(img, expand_ratio =4):
+    width = int(img.shape[1] * expand_ratio )
+    height = int(img.shape[0] * expand_ratio )
+    dim = (width, height)
+    output_img = np.zeros(dim, np.uint8)
+    points = expand_ratio * np.array(np.where(img==1))
+    # print(points)
+    # exit()
+    output_img[tuple(points)] = 1
+    return output_img 

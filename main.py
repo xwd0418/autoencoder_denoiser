@@ -15,4 +15,3 @@ if __name__ == "__main__":
     exp = Experiment(exp_name)
     exp.run()
     exp.test() 
-    release_cuda()
