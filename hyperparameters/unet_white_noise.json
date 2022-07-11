@@ -6,10 +6,11 @@
       "noise_factor": "random",
       "pre-filtered": false,
       "batch_size": 64,
+      "tessellate": false,
       "num_workers": 4
     },
     "experiment": {
-      "num_epochs": 1,
+      "num_epochs": 20,
       "learning_rate": 5e-7,
       "loss_func":"MSE",
       "lr_step": 0,

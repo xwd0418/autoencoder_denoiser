@@ -2,11 +2,12 @@
     "experiment_name": "trivia_",
     "dataset": {
       "shuffle": false,
-      "noise_factor": 0.2,
-      "noise_type": "white",
+      "noise_factor": "random",
+      "streak_prob": 0.3,
+      "noise_type": "t1",
       "batch_size": 64,
       "pre-filtered": false,
-      "tessellate": true,
+      "tessellate": false,
       "num_workers": 4
     },
     "experiment": {

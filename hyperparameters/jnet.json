@@ -1,12 +1,11 @@
 {
-    "experiment_name": "Unet_experiment",
+    "experiment_name": "Jnet_experiment",
     "dataset": {
       "shuffle": true,
       "noise_type": "white",
       "noise_factor": "random",
       "pre-filtered": false,
       "tessellate": true,
-      "upscale": 4,
       "batch_size": 16,
       "num_workers": 4
     },

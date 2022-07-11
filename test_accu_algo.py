@@ -12,14 +12,15 @@ from tqdm import tqdm
 from datetime import datetime
 import shutil
 
-name = "trivia"
+name = "t1_noise"
 f = open('./hyperparameters/'+ name + '.json')
 config = json.load(f)
 train_loader, val_loader, test_loader = get_datasets(config)
 
 for iter, data in enumerate(tqdm(train_loader)):
     raw, noise = data
-    break
+    if iter ==2  :
+        break
 
 prediction = noise.round()
 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
@@ -39,19 +40,19 @@ ax = plt.subplot(1, 3, 1)
 plt.tight_layout()
 ax.set_title('orig')
 ax.axis('off')
-plt.imshow(raw[0].cpu())
+plt.imshow(raw[0,0].cpu())
 
 ax = plt.subplot(1, 3, 2)
 plt.tight_layout()
 ax.set_title('noise')
 ax.axis('off')
-plt.imshow(noise[0].cpu())
+plt.imshow(noise[0,0].cpu())
 
 ax = plt.subplot(1, 3, 3)
 plt.tight_layout()
 ax.set_title('predicted')
 ax.axis('off')
-plt.imshow(prediction[0].cpu())
+plt.imshow(prediction[0,0].cpu())
 
 plt.savefig("accu_test_sample.png")
 displayed = True

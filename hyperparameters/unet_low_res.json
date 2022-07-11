@@ -6,12 +6,12 @@
       "noise_factor": "random",
       "pre-filtered": false,
       "tessellate": true,
-      "upscale": 4,
-      "batch_size": 16,
+      "upscale": 1,
+      "batch_size": 64,
       "num_workers": 4
     },
     "experiment": {
-      "num_epochs": 5,
+      "num_epochs": 40,
       "learning_rate": 5e-7,
       "loss_func":"MSE",
       "lr_step": 0,
@@ -19,7 +19,7 @@
       "lr_scheduler_type": "criterion"
     },
     "model": {
-        "model_type": "JNet",
+        "model_type": "UNet_2",
         "bilinear": true
       }
   }

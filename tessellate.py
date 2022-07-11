@@ -3,8 +3,7 @@ import cv2
 import numpy as np
 
 
-def triangle_tessellate(img1):
-    scale_factor = 4 # percent of original size
+def triangle_tessellate(img1, scale_factor=4):
     width = int(img1.shape[1] * scale_factor )
     height = int(img1.shape[0] * scale_factor )
     dim = (width, height)
@@ -17,7 +16,7 @@ def triangle_tessellate(img1):
     try :
         tri = Delaunay(points)        
     except:
-        return expand(img1)    
+        return expand(img1, scale_factor)    
           
     triangles = points[tri.simplices[:]]
     

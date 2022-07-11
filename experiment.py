@@ -52,7 +52,7 @@ class Experiment(object):
         
 
         # Also assign GPU to device
-        cuda_num = '1'
+        cuda_num = '0'
         self.device = torch.device(
             "cuda:{}".format(cuda_num) if torch.cuda.is_available() else "cpu"
         )
@@ -145,8 +145,7 @@ class Experiment(object):
         # temp
         # Iterate over the data, implement the training function
         for iter, data in enumerate(tqdm(self.__train_loader)):
-            raw, noise = data
-            raw, noise = raw.cuda().float(), noise.cuda().float()
+            raw, noise = self.__move_to_cuda(data)
            
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
@@ -180,6 +179,8 @@ class Experiment(object):
         
         return training_loss,training_accu
 
+    
+
     def __val(self):
         # print("validating stage")
 
@@ -188,8 +189,7 @@ class Experiment(object):
         val_loss = 0
         with torch.no_grad():
             for iter, data in enumerate(tqdm(self.__val_loader)):
-                raw, noise = data
-                raw, noise = raw.cuda(), noise.cuda().float()
+                raw, noise = self.__move_to_cuda(data)
                 prediction = self.__model.forward(noise)
                 
                 # find loss
@@ -309,8 +309,7 @@ class Experiment(object):
         """if auto encoder i.e. not using filter"""
         with torch.no_grad():
             for iter, data in enumerate(tqdm(self.__test_loader)):
-                raw, noise = data
-                raw, noise = raw.cuda().float(), noise.cuda().float()
+                raw, noise = self.__move_to_cuda(data)
                 prediction = self.best_model(noise).data
                 prediction = torch.clip(prediction.round(),0,1)
                 
@@ -324,6 +323,9 @@ class Experiment(object):
                     if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
                         noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
                     else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
+                    
+                    if self.config["model"]['model_type'] == "JNet":
+                        noise_pic = noise_pic[0]
                     
                     plt.clf()
 
@@ -396,6 +398,17 @@ class Experiment(object):
         state_dict = {'model': model_dict, 'optimizer': self.__optimizer.state_dict()}
         torch.save(state_dict, root_model_path)
 
+    def __move_to_cuda(self, data):
+        raw, noise = data
+        if type(noise) is list:
+            raw= raw.cuda().float()
+            noisy_sample, tessellated_noise = noise
+            noise = noisy_sample.cuda().float(),  tessellated_noise.cuda().float()
+        else:
+            
+            raw, noise = raw.cuda().float(), noise.cuda().float()
+        return raw,noise
+    
     def plot_stats(self):
         #training
         e = len(self.__training_losses)

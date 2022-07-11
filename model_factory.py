@@ -1,3 +1,4 @@
+from matplotlib.pyplot import axis
 import numpy as np
 import sys
 # import matplotlib.pyplot as plt
@@ -23,18 +24,52 @@ def get_model(config):
     elif model_type == "UNet":
         print("model :UNet")
         return UNet(1,1,config['model']['bilinear'])
+    elif model_type == "JNet":
+        print ("model: JNet (for tessellation)")
+        return JNet(1,1,config['model']['bilinear'])
+    elif model_type == "UNet_2":
+        print ("model: Unet with low-resolution tessellation)")
+        return UNet(2,1,config['model']['bilinear'])
     else : raise Exception("what is the model to use???")
 
 
+class JNet(nn.Module):
+    def __init__(self, n_channels, n_classes, bilinear) :
+        super(JNet, self).__init__()
+        
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+        
+        # the upper part of JNet
+        self.inc = DoubleConv(n_channels, 64)
+        self.down1 = Down(64, 64)
+        self.down2 = Down(64, 64)
+        
+        # the Unet part of Jnet
+        # 2 channels: 1 for noise, 1 for pre_filtered tessellation
+        self.unet = UNet(1,1,bilinear,tessllation=True) 
+        
+    def forward(self, x):
+        noisy_sample, tessellated_noise = x
+        tessellation1 = self.inc(tessellated_noise)
+        tessellation2 = self.down1(tessellation1)
+        tessellation3 = self.down2(tessellation2)
+        
+        return self.unet.forward(noisy_sample, tessellate_info=tessellation3)
+
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear):
+    def __init__(self, n_channels, n_classes, bilinear, tessllation = False):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
 
         self.inc = DoubleConv(n_channels, 64)
-        self.down1 = Down(64, 128)
+        if tessllation:
+            self.down1 = Down(128,128)
+        else:
+            self.down1 = Down(64, 128)
         self.down2 = Down(128, 256)
         self.down3 = Down(256, 512)
         factor = 2 if bilinear else 1
@@ -45,9 +80,13 @@ class UNet(nn.Module):
         self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_classes)
 
-    def forward(self, x):
+    def forward(self, x, tessellate_info=None):
         x1 = self.inc(x)
-        x2 = self.down1(x1)
+        if tessellate_info!=None:
+            concatenated = torch.concat((x1, tessellate_info), 1)
+            x2 = self.down1(concatenated)
+        else:
+            x2 = self.down1(x1)
         x3 = self.down2(x2)
         x4 = self.down3(x3)
         x5 = self.down4(x4)
