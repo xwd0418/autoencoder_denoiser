@@ -1,7 +1,7 @@
 # originally used to check the computation of accuracy (IoU)
 # now it is used to demo some raw/noised/pre_filtered image
 import json
-import os
+import os,sys
 from dataloader import get_datasets
 from model_factory import get_model
 from weakref import ref
@@ -12,7 +12,9 @@ from tqdm import tqdm
 from datetime import datetime
 import shutil
 
-name = "t1_noise"
+
+
+name = "smaller_noise"
 f = open('./hyperparameters/'+ name + '.json')
 config = json.load(f)
 train_loader, val_loader, test_loader = get_datasets(config)
@@ -40,22 +42,24 @@ ax = plt.subplot(1, 3, 1)
 plt.tight_layout()
 ax.set_title('orig')
 ax.axis('off')
-plt.imshow(raw[0,0].cpu())
+plt.imshow(raw[0,0].cpu(),cmap='gray')
 
 ax = plt.subplot(1, 3, 2)
 plt.tight_layout()
 ax.set_title('noise')
 ax.axis('off')
-plt.imshow(noise[0,0].cpu())
+plt.imshow(noise[0,0].cpu(),cmap='gray')
 
 ax = plt.subplot(1, 3, 3)
 plt.tight_layout()
 ax.set_title('predicted')
 ax.axis('off')
-plt.imshow(prediction[0,0].cpu())
+plt.imshow(prediction[0,0].cpu(),cmap='gray')
 
 plt.savefig("accu_test_sample.png")
 displayed = True
 plt.clf()
 
+
+# print(noise[0,0,28])
 

@@ -5,7 +5,7 @@ from model_factory import get_model
 from weakref import ref
 import matplotlib.pyplot as plt
 import numpy as np
-from tessellate import triangle_tessellate
+from data_preprocess import triangle_tessellate
 from tqdm import tqdm
 from scipy.spatial import Delaunay
 import cv2

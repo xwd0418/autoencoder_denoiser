@@ -215,19 +215,19 @@ class Experiment(object):
                     plt.tight_layout()
                     ax.set_title('orig')
                     ax.axis('off')
-                    plt.imshow(raw_pic[0].cpu())
+                    plt.imshow(raw_pic[0].cpu(),cmap='gray')
 
                     ax = plt.subplot(1, 3, 2)
                     plt.tight_layout()
                     ax.set_title('noise')
                     ax.axis('off')
-                    plt.imshow(noise_pic[0].cpu())
+                    plt.imshow(noise_pic[0].cpu(),cmap='gray')
 
                     ax = plt.subplot(1, 3, 3)
                     plt.tight_layout()
                     ax.set_title('predicted')
                     ax.axis('off')
-                    plt.imshow(prediction_pic[0].cpu())
+                    plt.imshow(prediction_pic[0].cpu(),cmap='gray')
 
                     plt.savefig(os.path.join(self.__experiment_dir, "epoch_{}_sample_images.png".format(str(self    .__current_epoch))))
                     displayed = True
@@ -275,19 +275,19 @@ class Experiment(object):
                     plt.tight_layout()
                     ax.set_title('orig')
                     ax.axis('off')
-                    plt.imshow(raw_pic[0])
+                    plt.imshow(raw_pic[0],cmap='gray')
 
                     ax = plt.subplot(1, 3, 2)
                     plt.tight_layout()
                     ax.set_title('noise')
                     ax.axis('off')
-                    plt.imshow(noise_pic[0])
+                    plt.imshow(noise_pic[0],cmap='gray')
 
                     ax = plt.subplot(1, 3, 3)
                     plt.tight_layout()
                     ax.set_title('predicted')
                     ax.axis('off')
-                    plt.imshow(prediction_pic[0])
+                    plt.imshow(prediction_pic[0],cmap='gray')
 
                     plt.savefig(os.path.join(self.__experiment_dir, "sample_images.png"))
                     displayed = True
@@ -333,19 +333,19 @@ class Experiment(object):
                     plt.tight_layout()
                     ax.set_title('orig')
                     ax.axis('off')
-                    plt.imshow(raw_pic[0].cpu())
+                    plt.imshow(raw_pic[0].cpu(),cmap='gray')
 
                     ax = plt.subplot(1, 3, 2)
                     plt.tight_layout()
                     ax.set_title('noise')
                     ax.axis('off')
-                    plt.imshow(noise_pic[0].cpu())
+                    plt.imshow(noise_pic[0].cpu(),cmap='gray')
 
                     ax = plt.subplot(1, 3, 3)
                     plt.tight_layout()
                     ax.set_title('predicted')
                     ax.axis('off')
-                    plt.imshow(prediction_pic[0].cpu())
+                    plt.imshow(prediction_pic[0].cpu(),cmap='gray')
 
                     plt.savefig(os.path.join(self.__experiment_dir, "sample_images.png"))
                     displayed = True

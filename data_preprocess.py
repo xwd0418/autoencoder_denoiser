@@ -41,7 +41,7 @@ def triangle_tessellate(img1, scale_factor=4):
         
     return output_img
        
-def expand(img, expand_ratio =4):
+def expand(img, expand_ratio=4, signal_upscale=False):
     width = int(img.shape[1] * expand_ratio )
     height = int(img.shape[0] * expand_ratio )
     dim = (width, height)
