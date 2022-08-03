@@ -1,16 +1,15 @@
 {
-    "experiment_name": "noise1",
+    "experiment_name": "Unet_experiment",
     "dataset": {
       "shuffle": true,
-      "signal_upscale":2,
       "noise_type": "t1",
-      "white_noise_factor": 1,
-      "white_noise_rate":0.01,
+      "noise_factor": "random", 
+      "__comment: ": "here is random.uniform(0.2,0.6)",
       "pre-filtered": false,
-      "batch_size": 32,
+      "batch_size": 64,
       "tessellate": false,
       "num_workers": 4,
-      "streak_prob": 0.6,
+      "streak_prob": 0.15,
       "cross_prob": 0.3,
       "data_augment": 5
     },

@@ -5,15 +5,18 @@ from model_factory import get_model
 from weakref import ref
 import matplotlib.pyplot as plt
 import numpy as np
-import torch, copy
+import torch, copy, cv2
 from tqdm import tqdm
 from datetime import datetime
 import shutil
+import matplotlib.image
+from sklearn.metrics import f1_score, average_precision_score, recall_score
+
 
 ROOT_STATS_DIR = "./experiment_data"
 class Experiment(object):
     def __init__(self, name):
-        f = open('./hyperparameters/'+ name + '.json')
+        f = open('/home/wangdong/autoencoder_denoiser/hyperparameters/'+ name + '.json')
         config = json.load(f)
         config['experiment_name'] = name
         self.config = config
@@ -44,7 +47,7 @@ class Experiment(object):
 
         # Init Model
         self.__model = get_model(config)
-        # self.__model = torch.nn.DataParallel(self.__model)
+        self.__model = torch.nn.DataParallel(self.__model)
         
         if config['model']['model_type'] == 'filter':
             return None
@@ -107,6 +110,7 @@ class Experiment(object):
                 state_dict = torch.load(os.path.join(self.__experiment_dir, 'latest_model.pt'))
 
                 self.__model.load_state_dict(state_dict['model'])
+                self.best_model = copy.deepcopy(self.__model)
                 self.__optimizer.load_state_dict(state_dict['optimizer'])
 
                 self.__training_losses = training_losses
@@ -255,19 +259,25 @@ class Experiment(object):
 
     def test(self):
         print("testing stage")
-        accu = []
+        IoU = []
+        recall = []
+        precision = []
+        f1= []
         test_loss= 0
-        displayed = False
-
+        displayed = 0
+        samples_path = self.__experiment_dir+"/sample_imgs"
+        os.makedirs(samples_path, exist_ok=True)
+        
         """if filter """
         if self.config['model']['model_type'] == 'filter':
+            exit()
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = data
                 prediction = self.__model(noise)
                 
                 prediction = torch.clip(prediction.round(),0,1)
                 
-                if not displayed:
+                if displayed<20:
                     noise_pic , prediction_pic, raw_pic = noise,prediction, raw
                     plt.clf()
 
@@ -300,11 +310,11 @@ class Experiment(object):
                 intersec = np.sum(np.array(raw) * prediction )
                 batch_accu = intersec/(torch.sum(raw)+np.sum(prediction)-intersec)
                 # batch_accu = np.sum(np.array(raw) * np.array(prediction ))/(np.sum(raw)+np.sum(prediction))
-                accu.append(batch_accu)
+                IoU.append(batch_accu)
                 # print(accu)
-            print("avg testing accuracy is ",(sum(accu) / len(accu)))
+            print("avg testing accuracy is ",(sum(IoU) / len(IoU)))
             
-            return sum(accu) / len(accu)
+            return sum(IoU) / len(IoU)
 
         """if auto encoder i.e. not using filter"""
         with torch.no_grad():
@@ -319,7 +329,10 @@ class Experiment(object):
                 loss=self.__criterion(prediction,ground_truth )
                 test_loss+=loss.item() 
                 
-                if not displayed:
+                clist = [(0,"green"), (0.5,"black"), (1, "red")]
+                custom_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",clist)
+
+                if displayed<20:
                     if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
                         noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
                     else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
@@ -329,26 +342,38 @@ class Experiment(object):
                     
                     plt.clf()
 
-                    ax = plt.subplot(1, 3, 1)
+                    ax = plt.subplot(2, 2, 1)
                     plt.tight_layout()
-                    ax.set_title('orig')
+                    ax.set_title('original')
                     ax.axis('off')
                     plt.imshow(raw_pic[0].cpu(),cmap='gray')
 
-                    ax = plt.subplot(1, 3, 2)
+                    ax = plt.subplot(2, 2, 2)
                     plt.tight_layout()
                     ax.set_title('noise')
                     ax.axis('off')
                     plt.imshow(noise_pic[0].cpu(),cmap='gray')
 
-                    ax = plt.subplot(1, 3, 3)
+                    ax = plt.subplot(2, 2, 3)
                     plt.tight_layout()
                     ax.set_title('predicted')
                     ax.axis('off')
                     plt.imshow(prediction_pic[0].cpu(),cmap='gray')
+                    
+                    ax = plt.subplot(2, 2, 4)
+                    plt.tight_layout()
+                    ax.set_title('difference')
+                    ax.axis('off')
+                    
+                    # difference = prediction_pic[0].cpu()-raw_pic[0].cpu()
+                    # difference = difference.float()/2 + 0.5
+                    # print(difference)
+                    difference = cv2.subtract(np.array(prediction_pic[0].cpu()), np.array(raw_pic[0].cpu()))
+                    plt.imshow(difference, cmap = custom_cmap, vmax=1, vmin=-1)
 
-                    plt.savefig(os.path.join(self.__experiment_dir, "sample_images.png"))
-                    displayed = True
+
+                    plt.savefig(os.path.join(samples_path, f"sample_image{displayed}.png"))
+                    displayed = displayed+1
                     plt.clf()
                 
                 
@@ -358,7 +383,11 @@ class Experiment(object):
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
                 union = (torch.sum(raw)+torch.sum(prediction)-intersec)
                 batch_accu =intersec / union
-                accu.append(batch_accu)
+                IoU.append(batch_accu)
+                precision.append(average_precision_score(prediction.cpu().flatten(), raw.cpu().flatten()))
+                recall.append(recall_score(prediction.cpu().flatten(), raw.cpu().flatten()))
+                f1.append(f1_score(prediction.cpu().flatten(), raw.cpu().flatten()))
+                
                 if (batch_accu > 1 or batch_accu < 0) :
                     print("bug!")
                     print("raw is ", torch.sum(raw))
@@ -367,14 +396,24 @@ class Experiment(object):
                     print("union is " , union)
                 # print(accu)
                 
-            test_loss /= len(accu)
-            avg_accu = (sum(accu) / len(accu)).item()
-            print("avg testing accuracy is ",avg_accu)
+            test_loss /= len(IoU)
+            avg_IoU = (sum(IoU) / len(IoU)).item()
+            precision_result = sum(precision) / len(IoU)
+            recall_result = sum(recall) / len(IoU)
+            f1_result = sum(f1) / len(IoU)
+            print("avg IoU is ",avg_IoU)
+            print("avg precision is",precision_result )
+            print("avg recall  is",recall_result )
+            print("avg f1 score is",f1_result )
             print("avg testing loss is ", test_loss)
             
-            output_msg = {"loss":test_loss, "accuracy":avg_accu}
+            output_msg = {"loss":test_loss, 
+                          "IoU":avg_IoU,
+                          "precision": precision_result,
+                          "recall": recall_result,
+                          "f1 score":f1_result}
             write_to_file_in_dir(self.__experiment_dir, 'testing result.txt', output_msg)
-            return avg_accu
+            return avg_IoU
 
     def __init_model(self):
         if torch.cuda.is_available():

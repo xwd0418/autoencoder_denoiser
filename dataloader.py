@@ -16,7 +16,7 @@ print("loading data ...")
 #     img_data = data[:,3]
 #     imgs.append(img_data)
 #     # the second index has to be 3 to show be some image
-all_data  = np.load('dataset/single.npy',allow_pickle=True)
+all_data  = np.load('/home/wangdong/autoencoder_denoiser/dataset/single.npy',allow_pickle=True)
 
 print("finish loading")
 
@@ -61,8 +61,9 @@ class HSQC_Dataset(Dataset):
             noisy_sample = raw_sample + noise_factor * np.random.uniform(low=0.0, high=1.5, size=raw_sample.shape)
         elif self.config["dataset"]["noise_type"] == "t1": 
             noisy_sample = add_t1_noise(raw_sample, self.config)
-            white_noise_rate=self.config['dataset']['white_noise_rate']
-            noisy_sample += self.config["dataset"]["white_noise_factor"] * np.random.binomial(1, white_noise_rate,  size=raw_sample.shape)
+            white_noise_rate=self.config['dataset'].get('white_noise_rate')
+            if white_noise_rate is not None:
+                noisy_sample += self.config["dataset"]["white_noise_factor"] * np.random.binomial(1, white_noise_rate,  size=raw_sample.shape)
 
 
         else:

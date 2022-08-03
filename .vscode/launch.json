@@ -13,7 +13,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "unet_white_noise"
+                "uu"
             ]
         }
     ]
