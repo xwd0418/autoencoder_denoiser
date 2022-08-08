@@ -14,7 +14,7 @@ import shutil
 
 
 
-name = "smaller_noise"
+name = "only_t1"
 f = open('./hyperparameters/'+ name + '.json')
 config = json.load(f)
 train_loader, val_loader, test_loader = get_datasets(config)

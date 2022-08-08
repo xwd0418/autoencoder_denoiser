@@ -151,7 +151,7 @@ def add_t1_noise(img, config):
     noisy_columns = cross_points[1]
     for col in noisy_columns:
         if np.random.binomial(1, streak_p):
-            noise_rate = np.random.binomial(height, np.random.uniform(low=0.1, high=0.7))/ height
+            noise_rate = np.random.binomial(height, np.random.uniform(low=0.2, high=0.7))/ height
             noise =  np.random.binomial(1, noise_rate, height)
             noisy_img[:,col] += noise
             
@@ -173,17 +173,31 @@ def generate_cross_noise(img, config):
     noise_probability = config['dataset']['cross_prob']
     output_noise = np.zeros(img.shape)
     points =  np.array(np.where(img==1))
+    points = points[:, np.random.permutation(points.shape[1])]
     points = points[:, 0:int(len(points[0])*noise_probability)]
     if len(points) == 0: 
         return output_noise
-    for index_shift  in [-3,-2,-1,1,2,3]:
+    
+    
+    cross_length = np.clip(np.random.poisson(3), 1, 12)
+    # adding horizontal cross
+    for index_shift  in range(-1*cross_length, cross_length+1):
+        if index_shift == 0 :
+            continue
         points_copy1 = copy.deepcopy(points)
         points_copy1[1] += index_shift
         points_copy1[1] = np.clip(points_copy1[1], 0, img.shape[1]-1)
         noise_layer1 = np.zeros(img.shape)
         noise_layer1[tuple(points_copy1)] = 1
         output_noise += noise_layer1
-        
+    
+    # somtimes crosses are elongated at one direction
+    if np.random.binomial(1, 0.3):
+        cross_length = np.clip(np.random.poisson(3), 1, 12)        
+    # adding vertical
+    for index_shift  in range(-1*cross_length, cross_length+1): 
+        if index_shift == 0 :
+            continue
         points_copy2 = copy.deepcopy(points)
         points_copy2[0] += index_shift
         points_copy2[0] = np.clip(points_copy2[0], 0, img.shape[1]-1)
