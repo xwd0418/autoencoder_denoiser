@@ -16,7 +16,8 @@ import matplotlib.image
 from glob import glob
 
 orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
-new_img_dir = orig_img_dir+"_binary_array"
+# new_img_dir = orig_img_dir+"_binary_array"
+new_img_dir = orig_img_dir+"_greyscale"
 os.makedirs(new_img_dir, exist_ok = True) 
 for img_folder in glob(orig_img_dir+"/*/"):
     new_sub_dir = new_img_dir+"/"+img_folder.split("/")[-2]
@@ -24,8 +25,9 @@ for img_folder in glob(orig_img_dir+"/*/"):
     for img_path in glob(img_folder+"*"):
         img = Image.open(img_path)
         gray = img.convert('L')
-        binary = gray.point(lambda x: 0 if x>200 else 255, '1')
-        np_img = np.array(binary).astype(np.int8)
+        # binary = gray.point(lambda x: 0 if x>200 else 255, '1')
+        # np_img = np.array(binary).astype(np.int8)
+        np_img = np.array(gray)
           
-        saved_path = img_path.replace(".png",".npy").replace(".jpg",".npy").replace("real_noise","real_noise_binary_array")
+        saved_path = img_path.replace(".png",".npy").replace(".jpg",".npy").replace("real_noise","real_noise_greyscale")
         np.save(saved_path, np_img)

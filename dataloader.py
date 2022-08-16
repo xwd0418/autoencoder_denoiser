@@ -1,4 +1,5 @@
 import os,sys
+from glob import glob
 import cv2
 import torch, copy
 from torch.utils.data import Dataset, DataLoader
@@ -19,6 +20,22 @@ print("loading data ...")
 all_data  = np.load('/home/wangdong/autoencoder_denoiser/dataset/single.npy',allow_pickle=True)
 
 print("finish loading")
+
+class RealNoiseDataset(Dataset):
+    def __init__(self, imgs):
+        self.imgs = []
+        orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
+        # new_img_dir = orig_img_dir+"_binary_array"
+        new_img_dir = orig_img_dir+"_binary_array"
+
+        for img_folder in glob(new_img_dir+"/*/"):
+            for img_path in glob(img_folder+"/*"):
+                self.imgs.append(np.load(img_path))
+        
+        
+        
+    def __getitem__(self, index):
+        return self.imgs[index]
 
 class HSQC_Dataset(Dataset):
     """Face Landmarks dataset."""
@@ -58,7 +75,7 @@ class HSQC_Dataset(Dataset):
         elif self.config["dataset"]["noise_type"] == "gaussian":
             noisy_sample = raw_sample + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=raw_sample.shape)
         elif self.config["dataset"]["noise_type"] == "white":    
-            noisy_sample = raw_sample + noise_factor * np.random.uniform(low=0.0, high=1.5, size=raw_sample.shape)
+            noisy_sample = raw_sample + noise_factor * np.random.uniform(low=0.0, high=1.0, size=raw_sample.shape)
         elif self.config["dataset"]["noise_type"] == "t1": 
             noisy_sample = add_t1_noise(raw_sample, self.config)
             white_noise_rate=self.config['dataset'].get('white_noise_rate')

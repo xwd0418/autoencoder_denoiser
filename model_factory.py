@@ -4,7 +4,7 @@ import sys
 # import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch
-# import torchvision
+import torchvision
 
 import torchvision.models as models
 from unet_parts import *
@@ -30,19 +30,22 @@ def get_model(config):
     elif model_type == "UNet_2":
         print ("model: Unet with low-resolution tessellation)")
         return UNet(2,1,config['model']['bilinear'])
+    elif model_type == "Adv_UNet":
+        print ("model: Adv_Unet")
+        return JNet(1,1,config['model']['bilinear'], config['model']['features'])
     else : raise Exception("what is the model to use???")
 
 
 class JNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear) :
+    def __init__(self, n_channels_in, n_channels_out, bilinear) :
         super(JNet, self).__init__()
         
-        self.n_channels = n_channels
-        self.n_classes = n_classes
+        self.n_channels_in = n_channels_in
+        self.n_channels_out = n_channels_out
         self.bilinear = bilinear
         
         # the upper part of JNet
-        self.inc = DoubleConv(n_channels, 64)
+        self.inc = DoubleConv(n_channels_in, 64)
         self.down1 = Down(64, 64)
         self.down2 = Down(64, 64)
         
@@ -59,13 +62,13 @@ class JNet(nn.Module):
         return self.unet.forward(noisy_sample, tessellate_info=tessellation3)
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear, tessllation = False):
+    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False):
         super(UNet, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
+        self.n_channels_in = n_channels_in
+        self.n_channels_out = n_channels_out
         self.bilinear = bilinear
 
-        self.inc = DoubleConv(n_channels, 64)
+        self.inc = DoubleConv(n_channels_in, 64)
         if tessllation:
             self.down1 = Down(128,128)
         else:
@@ -78,7 +81,7 @@ class UNet(nn.Module):
         self.up2 = Up(512, 256 // factor, bilinear)
         self.up3 = Up(256, 128 // factor, bilinear)
         self.up4 = Up(128, 64, bilinear)
-        self.outc = OutConv(64, n_classes)
+        self.outc = OutConv(64, n_channels_out)
 
     def forward(self, x, tessellate_info=None):
         x1 = self.inc(x)
@@ -159,6 +162,23 @@ class CNN_encoding_model(nn.Module):
         return x  
     
 
+class Adv_Unet(nn.Module):
+    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False, feature_nums):
+        self.Unet = UNet(n_channels_in,feature_nums[0] , bilinear)
+        self.discriminator = torchvision.ops.MLP(feature_nums[0],feature_nums[1:])
+    
+    def forward(self, x, y, coeff):
+        x = self.Unet(x)
+        y = torch.cat(x,y)
+        y.register_hook(grl_hook(coeff))
+        y = self.discriminator(y)
+        y = nn.Sigmoid(y)
+        return x, y
+
+def grl_hook(coeff):
+    def fun1(grad):
+        return -coeff*grad.clone()
+    return fun1
 
 
 
