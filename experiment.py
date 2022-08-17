@@ -1,6 +1,6 @@
 import json
 import os
-from dataloader import get_datasets
+from dataloader import get_datasets, get_real_img_dataset
 from model_factory import get_model
 from weakref import ref
 import matplotlib.pyplot as plt
@@ -33,6 +33,9 @@ class Experiment(object):
 
         # Load Datasets
         self.__train_loader, self.__val_loader, self.__test_loader = get_datasets(config)
+        if config['model']['model_type'] == "Adv_UNet":
+            self.__real_img_loader = get_real_img_dataset(config)
+            self.__batch_iterator = zip(loop_iterable(self.__real_img_loader))
 
         # Setup Experiment
         self.__epochs = config['experiment']['num_epochs']
@@ -127,7 +130,8 @@ class Experiment(object):
     def run(self):
         if self.config['model']['model_type'] == 'filter':
             return
-        for i in range( self.__epochs):  # loop over the dataset multiple times
+        beginning_epoch = self.__current_epoch
+        for i in range(beginning_epoch, self.__epochs):  # loop over the dataset multiple times
             self.__current_epoch+=1
             print("epoch: ",self.__current_epoch)
             train_loss, train_accu = self.__train()
@@ -150,17 +154,29 @@ class Experiment(object):
         # Iterate over the data, implement the training function
         for iter, data in enumerate(tqdm(self.__train_loader)):
             raw, noise = self.__move_to_cuda(data)
-           
+            real_img = next(self.__batch_iterator)[0].unsqueeze(1)
+            real_img = real_img.to(self.device)
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
             
+            if self.config['model']['model_type'] == "Adv_UNet":
+                prediction, domain_prediction = self.__model.forward(noise, real_img, 
+                                                                    calc_coeff(iter+self.__epochs*len(self.__train_loader)),
+                                                                    plain=False)
+                
             prediction = self.__model.forward(noise)
+            
             # prediction = prediction.type(torch.float32)
             # print(prediction.shape, raw.shape)
             ground_truth = raw
             if self.config["experiment"]["loss_func"] == "CrossEntropy":
                 ground_truth = raw[:,0,:,:]
+                
             loss=self.__criterion(prediction,ground_truth )
+            dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
+
+            adv_loss = torch.nn.BCELoss()(domain_prediction.squeeze(1), dc_target)
+            loss = loss + adv_loss
             prediction = torch.clip(prediction.round(),0,1)
             with torch.no_grad():
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
@@ -522,3 +538,11 @@ def read_file(path):
         return data
     else:
         raise NotRegularFileError("not an existing regular file: ", path)
+
+def loop_iterable(iterable):
+    while True:
+        yield from iterable
+        
+
+def calc_coeff(iter_num, high=1.0, low=0.0, alpha=10.0, max_iter=1000.0):
+    return np.float(2.0 * (high - low) / (1.0 + np.exp(-alpha*iter_num / max_iter)) - (high - low) + low)

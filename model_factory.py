@@ -32,7 +32,7 @@ def get_model(config):
         return UNet(2,1,config['model']['bilinear'])
     elif model_type == "Adv_UNet":
         print ("model: Adv_Unet")
-        return JNet(1,1,config['model']['bilinear'], config['model']['features'])
+        return Adv_Unet(1,1,config['model']['bilinear'], config['model']['features'])
     else : raise Exception("what is the model to use???")
 
 
@@ -83,7 +83,7 @@ class UNet(nn.Module):
         self.up4 = Up(128, 64, bilinear)
         self.outc = OutConv(64, n_channels_out)
 
-    def forward(self, x, tessellate_info=None):
+    def forward(self, x, tessellate_info=None, feature=False):
         x1 = self.inc(x)
         if tessellate_info!=None:
             concatenated = torch.concat((x1, tessellate_info), 1)
@@ -93,11 +93,14 @@ class UNet(nn.Module):
         x3 = self.down2(x2)
         x4 = self.down3(x3)
         x5 = self.down4(x4)
+        # print('x5 shape is ', x5.shape)
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         logits = self.outc(x)
+        if feature:
+            return logits, x5
         return logits
 
 class MLP_model(nn.Module):
@@ -161,19 +164,69 @@ class CNN_encoding_model(nn.Module):
         x=torch.reshape(x,(-1,1,100,100))
         return x  
     
+class Discriminator(nn.Module):
+    def __init__(self, feature_nums):
+        super(Discriminator, self).__init__()
+        self.MLP = MLP(512,feature_nums) # 512 is the num_channel of the encoded infomation
+    
+    def forward(self, x):
+        x = nn.AdaptiveAvgPool2d(1)(x)
+        print("after avg pool", x.shape)
+        x = self.MLP(x)
+
+class AdversarialNetwork(nn.Module):
+  def __init__(self, in_feature, hidden_size):
+    super(AdversarialNetwork, self).__init__()
+    self.ad_layer1 = nn.Linear(in_feature, hidden_size)
+    self.ad_layer1.weight.data.normal_(0, 0.01)
+    self.ad_layer1.bias.data.fill_(0.0)
+
+    self.ad_layer2 = nn.Linear(hidden_size, hidden_size)
+    self.ad_layer2.weight.data.normal_(0, 0.01)
+    self.ad_layer2.bias.data.fill_(0.0)
+
+    self.ad_layer3 = nn.Linear(hidden_size, 1)
+    self.ad_layer3.weight.data.normal_(0, 0.3)
+    self.ad_layer3.bias.data.fill_(0.0)
+
+    self.relu1 = nn.ReLU()
+    self.relu2 = nn.ReLU()
+    self.dropout1 = nn.Dropout(0.5)
+    self.dropout2 = nn.Dropout(0.5)
+    # self.sigmoid = nn.Sigmoid()
+
+  def forward(self, x, coeff):
+    x = x * 1.0
+    x.register_hook(grl_hook(coeff))
+    x = self.ad_layer1(x)
+    x = self.relu1(x)
+    x = self.dropout1(x)
+    x = self.ad_layer2(x)
+    x = self.relu2(x)
+    x = self.dropout2(x)
+    y = self.ad_layer3(x)
+    # y = self.sigmoid(y)
+    return y
+
 
 class Adv_Unet(nn.Module):
-    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False, feature_nums):
-        self.Unet = UNet(n_channels_in,feature_nums[0] , bilinear)
-        self.discriminator = torchvision.ops.MLP(feature_nums[0],feature_nums[1:])
+    def __init__(self, n_channels_in, n_channels_out, bilinear, feature_nums=None):
+        super(Adv_Unet,self).__init__()
+        self.Unet = UNet(n_channels_in,n_channels_out , bilinear)
+        self.discriminator = AdversarialNetwork(512, feature_nums)
     
-    def forward(self, x, y, coeff):
-        x = self.Unet(x)
-        y = torch.cat(x,y)
-        y.register_hook(grl_hook(coeff))
-        y = self.discriminator(y)
-        y = nn.Sigmoid(y)
-        return x, y
+    def forward(self, x, y=None, coeff=None, plain=True):
+        if plain:
+            return self.Unet(x)
+        combined = torch.cat((x,y))
+        combined_results, features = self.Unet(combined, feature=True)
+        # features.register_hook(grl_hook(coeff))
+        features = nn.AdaptiveAvgPool2d(1)(features).squeeze(2).squeeze(2)
+        # print("feature shape",features.shape)
+
+        y = self.discriminator(features, coeff)
+        y = nn.Sigmoid()(y)
+        return combined_results[:x.shape[0]], y  # only source set denoised_img and all domain predictions
 
 def grl_hook(coeff):
     def fun1(grad):

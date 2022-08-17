@@ -22,7 +22,7 @@ all_data  = np.load('/home/wangdong/autoencoder_denoiser/dataset/single.npy',all
 print("finish loading")
 
 class RealNoiseDataset(Dataset):
-    def __init__(self, imgs):
+    def __init__(self):
         self.imgs = []
         orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
         # new_img_dir = orig_img_dir+"_binary_array"
@@ -30,9 +30,12 @@ class RealNoiseDataset(Dataset):
 
         for img_folder in glob(new_img_dir+"/*/"):
             for img_path in glob(img_folder+"/*"):
-                self.imgs.append(np.load(img_path))
+                img = np.load(img_path)
+                img = cv2.resize( np.array(img,dtype='uint8'), (200,200), interpolation = cv2.INTER_AREA) 
+                self.imgs.append(img)
         
-        
+    def  __len__(self):
+        return len(self.imgs)
         
     def __getitem__(self, index):
         return self.imgs[index]
@@ -114,7 +117,11 @@ class HSQC_Dataset(Dataset):
         
         return raw_sample,noisy_sample
 
- 
+def get_real_img_dataset(config):
+    batch = config["dataset"]['batch_size']
+    shuffle=config["dataset"]['shuffle']
+    return DataLoader(RealNoiseDataset(), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+
 
 def get_datasets(config):
     # np.random.shuffle(all_data)
