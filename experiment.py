@@ -1,6 +1,7 @@
 import json
 import os
-from dataloader import get_datasets, get_real_img_dataset
+# from autoencoder_denoiser.dataloader_deprecated import get_datasets, get_real_img_dataset
+from hsqc_dataset import  get_datasets, get_real_img_dataset
 from model_factory import get_model
 from weakref import ref
 import matplotlib.pyplot as plt
@@ -16,7 +17,7 @@ from sklearn.metrics import f1_score, average_precision_score, recall_score
 ROOT_STATS_DIR = "./experiment_data"
 class Experiment(object):
     def __init__(self, name):
-        f = open('/home/wangdong/autoencoder_denoiser/hyperparameters/'+ name + '.json')
+        f = open('/root/autoencoder_denoiser/configs/'+ name + '.json')
         config = json.load(f)
         config['experiment_name'] = name
         self.config = config
@@ -121,6 +122,7 @@ class Experiment(object):
                 self.__current_epoch = current_epoch
                 print("Successfully loaded previous model")
             except NotRegularFileError:
+                self.best_model = copy.deepcopy(self.__model)
                 print('Reading last expriment failed, removing folder')
                 shutil.rmtree(self.__experiment_dir)
                 os.makedirs(self.__experiment_dir)
@@ -154,8 +156,9 @@ class Experiment(object):
         # Iterate over the data, implement the training function
         for iter, data in enumerate(tqdm(self.__train_loader)):
             raw, noise = self.__move_to_cuda(data)
-            real_img = next(self.__batch_iterator)[0].unsqueeze(1)
-            real_img = real_img.to(self.device)
+            if self.config['model']['model_type'] == "Adv_UNet":
+                real_img = next(self.__batch_iterator)[0].unsqueeze(1)
+                real_img = real_img.to(self.device)
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
             
@@ -173,10 +176,11 @@ class Experiment(object):
                 ground_truth = raw[:,0,:,:]
                 
             loss=self.__criterion(prediction,ground_truth )
-            dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
-
-            adv_loss = torch.nn.BCELoss()(domain_prediction.squeeze(1), dc_target)
-            loss = loss + adv_loss
+            
+            if self.config['model']['model_type'] == "Adv_UNet":
+                dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
+                adv_loss = torch.nn.BCELoss()(domain_prediction.squeeze(1), dc_target)
+                loss = loss + adv_loss
             prediction = torch.clip(prediction.round(),0,1)
             with torch.no_grad():
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
@@ -401,8 +405,8 @@ class Experiment(object):
                 batch_accu =intersec / union
                 IoU.append(batch_accu)
                 precision.append(average_precision_score(prediction.cpu().flatten(), raw.cpu().flatten()))
-                recall.append(recall_score(prediction.cpu().flatten(), raw.cpu().flatten()))
-                f1.append(f1_score(prediction.cpu().flatten(), raw.cpu().flatten()))
+                # recall.append(recall_score(prediction.cpu().flatten(), raw.cpu().flatten()))
+                # f1.append(f1_score(prediction.cpu().flatten(), raw.cpu().flatten()))
                 
                 if (batch_accu > 1 or batch_accu < 0) :
                     print("bug!")
@@ -419,15 +423,16 @@ class Experiment(object):
             f1_result = sum(f1) / len(IoU)
             print("avg IoU is ",avg_IoU)
             print("avg precision is",precision_result )
-            print("avg recall  is",recall_result )
-            print("avg f1 score is",f1_result )
+            # print("avg recall  is",recall_result )
+            # print("avg f1 score is",f1_result )
             print("avg testing loss is ", test_loss)
             
             output_msg = {"loss":test_loss, 
                           "IoU":avg_IoU,
                           "precision": precision_result,
-                          "recall": recall_result,
-                          "f1 score":f1_result}
+                        #   "recall": recall_result,
+                        #   "f1 score":f1_result
+            }
             write_to_file_in_dir(self.__experiment_dir, 'testing result.txt', output_msg)
             return avg_IoU
 

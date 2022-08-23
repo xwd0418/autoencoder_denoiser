@@ -4,3 +4,4 @@
 *.pt
 experiment_data/*
 denoised_dataset
+test

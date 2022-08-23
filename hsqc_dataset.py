@@ -10,59 +10,31 @@ import matplotlib.pyplot as plt
 from data_preprocess import triangle_tessellate , expand
 
 
-# imgs = []
-print("loading data ...")
-# for i in range(1,20):
-#     data = np.load("dataset/Jeol_info{}000.npy".format(str(i)),allow_pickle=True)
-#     img_data = data[:,3]
-#     imgs.append(img_data)
-#     # the second index has to be 3 to show be some image
-all_data  = np.load('/home/wangdong/autoencoder_denoiser/dataset/single.npy',allow_pickle=True)
-
-print("finish loading")
-
-class RealNoiseDataset(Dataset):
-    def __init__(self):
-        self.imgs = []
-        orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
-        # new_img_dir = orig_img_dir+"_binary_array"
-        new_img_dir = orig_img_dir+"_binary_array"
-
-        for img_folder in glob(new_img_dir+"/*/"):
-            for img_path in glob(img_folder+"/*"):
-                img = np.load(img_path)
-                img = cv2.resize( np.array(img,dtype='uint8'), (200,200), interpolation = cv2.INTER_AREA) 
-                self.imgs.append(img)
-        
-    def  __len__(self):
-        return len(self.imgs)
-        
-    def __getitem__(self, index):
-        return self.imgs[index]
-
-class HSQC_Dataset(Dataset):
-    """Face Landmarks dataset."""
-
-    def __init__(self, all_data, config=None):
-        """
-        Args:
-            csv_file (string): Path to the csv file with annotations.
-            root_dir (string): Directory with all the images.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
-        self.all_data = all_data
+class HSQCDataset(Dataset):
+    def __init__(self, split="train", config=None):
+        self.dir = "/root/data/hyun_fp_data/hsqc_ms_pairs/"
+        self.split = split
         self.config = config
+        self.augment = config['dataset'].get("data_augment")
+        self.augment = 1 if self.augment==None else int(self.augment)
+        assert (self.augment >= 1)
+        # self.orig_hsqc = os.path.join(self.dir, "data")
+        # assert(os.path.exists(self.orig_hsqc))
+        assert(split in ["train", "val", "test"])
+        self.FP_files = list(os.listdir(os.path.join(self.dir, split, "FP")))
+        # self.HSQC_files = list(os.listdir(os.path.join(self.dir, split, "HSQC")))
+        # assert (len(self.FP_files ) == (self.HSQC_files))
 
     def __len__(self):
-        return len(self.all_data)
+        return len(self.FP_files)*self.augment
 
-    def __getitem__(self, idx):
-        raw_sample = self.all_data[idx]
+    def __getitem__(self, i):
+        file_index = i//self.augment
+        raw_sample = torch.load(os.path.join(self.dir,  self.split, "HSQC_plain_imgs_toghter", self.FP_files[file_index]))
+        raw_sample = np.array(raw_sample, dtype="float32")
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
-            raw_sample = cv2.resize(np.array(raw_sample,dtype='uint8'), (raw_sample.shape[1]*2,raw_sample.shape[0]*2), interpolation = cv2.INTER_AREA) 
-            raw_sample = raw_sample.astype('int64')
+            raw_sample = cv2.resize(raw_sample[0], (raw_sample.shape[2]*2,raw_sample.shape[1]*2), interpolation = cv2.INTER_AREA) 
         if self.config['dataset'].get('noise_factor') != None:
             if self.config["dataset"]["noise_factor"] == "random":
                 noise_factor = random.uniform(0.2,0.6)
@@ -83,7 +55,7 @@ class HSQC_Dataset(Dataset):
             noisy_sample = add_t1_noise(raw_sample, self.config)
             white_noise_rate=self.config['dataset'].get('white_noise_rate')
             if white_noise_rate is not None:
-                noisy_sample += self.config["dataset"]["white_noise_factor"] * np.random.binomial(1, white_noise_rate,  size=raw_sample.shape)
+                noisy_sample += self.config["dataset"]["noise_factor"] * np.random.binomial(1, white_noise_rate,  size=raw_sample.shape)
 
 
         else:
@@ -117,40 +89,43 @@ class HSQC_Dataset(Dataset):
         
         return raw_sample,noisy_sample
 
+class RealNoiseDataset(Dataset):
+    def __init__(self):
+        self.imgs = []
+        orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
+        # new_img_dir = orig_img_dir+"_binary_array"
+        new_img_dir = orig_img_dir+"_binary_array"
+
+        for img_folder in glob(new_img_dir+"/*/"):
+            for img_path in glob(img_folder+"/*"):
+                img = np.load(img_path)
+                img = cv2.resize( np.array(img,dtype='uint8'), (200,200), interpolation = cv2.INTER_AREA) 
+                self.imgs.append(img)
+        
+    def  __len__(self):
+        return len(self.imgs)
+        
+    def __getitem__(self, index):
+        return self.imgs[index]
+
+def get_datasets(config):
+    shuffle=config["dataset"]['shuffle']
+    batch = config["dataset"]['batch_size']
+    train_loader = DataLoader(HSQCDataset("train", config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+    val_loader = DataLoader(HSQCDataset("val",config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+    test_loader = DataLoader(HSQCDataset("test",config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+    return train_loader, val_loader , test_loader
+
 def get_real_img_dataset(config):
     batch = config["dataset"]['batch_size']
     shuffle=config["dataset"]['shuffle']
     return DataLoader(RealNoiseDataset(), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
 
 
-def get_datasets(config):
-    # np.random.shuffle(all_data)
-    first = int(len(all_data)*0.8)
-    second = int(len(all_data)*0.9)
-
-    train = all_data[:first]
-    val = all_data[first:second]
-    test = all_data[second:]
-    
-    augment = config["dataset"].get('data_augment')
-    
-    if augment == None:
-        print("Not using data augmentation")
-    else:
-        train, val, test = np.tile(train,5), np.tile(val,5), np.tile(test,5)
-    
 
 
-    shuffle=config["dataset"]['shuffle']
-    batch = config["dataset"]['batch_size']
-    train_loader = DataLoader(HSQC_Dataset(train,config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
-    val_loader = DataLoader(HSQC_Dataset(val,config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
-    test_loader = DataLoader(HSQC_Dataset(test,config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+"""helper functioner to gerneate noise"""
 
-    return train_loader, val_loader , test_loader
-
-
-"""some helper functions to pre_process data"""
 def selecting(x):
     if x>=0.6: return 1
     return 0
@@ -159,16 +134,17 @@ def filtering(x):
     if x>=0.6: return x
     return 0
 
+
 def add_t1_noise(img, config):
     height = img.shape[0]
     streak_p = config['dataset'].get('streak_prob')  # probability of generating streak noise
-    # if config['dataset'].get('noise_factor') != None:
-    #     if config["dataset"]["noise_factor"] == "random":
-    #         noise_factor = random.uniform(0.2,0.6)
-    #     else:
-    #         noise_factor = config["dataset"]["noise_factor"]
-    # else :
-    #     noise_factor = 1
+    if config['dataset'].get('noise_factor') != None:
+        if config["dataset"]["noise_factor"] == "random":
+            noise_factor = random.uniform(0.05,0.1)
+        else:
+            noise_factor = config["dataset"]["noise_factor"]
+    else :
+        noise_factor = 1
     
     noisy_img = copy.deepcopy(img)
     cross_noise, cross_points = generate_cross_noise(img, config)
@@ -177,9 +153,9 @@ def add_t1_noise(img, config):
         if np.random.binomial(1, streak_p):
             noise_rate = np.random.binomial(height, np.random.uniform(low=0.2, high=0.7))/ height
             noise =  np.random.binomial(1, noise_rate, height)
-            noisy_img[:,col] += noise
+            noisy_img[:,col] += noise*noise_factor
             
-    noisy_img = noisy_img + cross_noise
+    noisy_img = noisy_img + cross_noise*noise_factor
         
     return noisy_img
         

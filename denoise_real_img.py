@@ -88,8 +88,9 @@ for img_folder in glob(new_img_dir+"/*/"):
             
             if args.resize:
                 original_size = img.shape
-                size = 100*config['dataset'].get('signal_upscale', 1)
-                resized_img = cv2.resize(img.astype("uint8"), (size,size))
+                size1 = img.shape[0]*config['dataset'].get('signal_upscale', 1)
+                size2 = img.shape[1]*config['dataset'].get('signal_upscale', 1)
+                resized_img = cv2.resize(img.astype("uint8"), (size1,size2))
                 img_input = torch.tensor(resized_img).unsqueeze(0).unsqueeze(0).float().to(device)
             else:
                 img_input = torch.tensor(img).unsqueeze(0).unsqueeze(0).float().to(device)

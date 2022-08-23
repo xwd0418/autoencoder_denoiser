@@ -1,3 +1,6 @@
+"This file contains functions to precess images"
+"Mainly tessellation"
+
 from scipy.spatial import Delaunay
 import cv2
 import numpy as np

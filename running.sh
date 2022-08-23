@@ -1,2 +1,2 @@
-python main.py noise3
-python main.py noise4
+python create_new_data.py
+python main.py t1_n_white
