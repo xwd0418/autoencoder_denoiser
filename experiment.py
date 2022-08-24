@@ -166,8 +166,8 @@ class Experiment(object):
                 prediction, domain_prediction = self.__model.forward(noise, real_img, 
                                                                     calc_coeff(iter+self.__epochs*len(self.__train_loader)),
                                                                     plain=False)
-                
-            prediction = self.__model.forward(noise)
+            else:    
+                prediction = self.__model.forward(noise)
             
             # prediction = prediction.type(torch.float32)
             # print(prediction.shape, raw.shape)

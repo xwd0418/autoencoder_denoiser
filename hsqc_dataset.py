@@ -21,16 +21,22 @@ class HSQCDataset(Dataset):
         # self.orig_hsqc = os.path.join(self.dir, "data")
         # assert(os.path.exists(self.orig_hsqc))
         assert(split in ["train", "val", "test"])
-        self.FP_files = list(os.listdir(os.path.join(self.dir, split, "FP")))
+        
+        self.hsqc_path = 'HSQC_plain_imgs_toghter'
+        if self.config['dataset'].get("large_input"):
+            self.hsqc_path = 'HSQC_plain_imgs_toghter_1800_1200'
+            
+        self.hsqc_files = list(os.listdir(os.path.join(self.dir, split, self.hsqc_path)))
         # self.HSQC_files = list(os.listdir(os.path.join(self.dir, split, "HSQC")))
         # assert (len(self.FP_files ) == (self.HSQC_files))
 
     def __len__(self):
-        return len(self.FP_files)*self.augment
+        return len(self.hsqc_files)*self.augment
 
     def __getitem__(self, i):
         file_index = i//self.augment
-        raw_sample = torch.load(os.path.join(self.dir,  self.split, "HSQC_plain_imgs_toghter", self.FP_files[file_index]))
+
+        raw_sample = torch.load(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         raw_sample = np.array(raw_sample, dtype="float32")
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
@@ -90,16 +96,18 @@ class HSQCDataset(Dataset):
         return raw_sample,noisy_sample
 
 class RealNoiseDataset(Dataset):
-    def __init__(self):
+    def __init__(self, config):
         self.imgs = []
-        orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
+        orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
         # new_img_dir = orig_img_dir+"_binary_array"
-        new_img_dir = orig_img_dir+"_binary_array"
+        new_img_dir = orig_img_dir+"_greyscale"
+
+        img_shape = (120 *config['dataset']['signal_upscale'] ,180 * config['dataset']['signal_upscale']) 
 
         for img_folder in glob(new_img_dir+"/*/"):
             for img_path in glob(img_folder+"/*"):
                 img = np.load(img_path)
-                img = cv2.resize( np.array(img,dtype='uint8'), (200,200), interpolation = cv2.INTER_AREA) 
+                img = cv2.resize( np.array(img), img_shape, interpolation = cv2.INTER_AREA) 
                 self.imgs.append(img)
         
     def  __len__(self):
@@ -119,7 +127,7 @@ def get_datasets(config):
 def get_real_img_dataset(config):
     batch = config["dataset"]['batch_size']
     shuffle=config["dataset"]['shuffle']
-    return DataLoader(RealNoiseDataset(), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+    return DataLoader(RealNoiseDataset(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
 
 
 

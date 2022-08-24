@@ -24,10 +24,10 @@ name=args.config
 
 if args.dilation == True and args.resize==True:
     raise Exception("you can only choose to use either dilation or resize")
-f = open('/home/wangdong/autoencoder_denoiser/hyperparameters/'+ name + '.json')
+f = open('/root/autoencoder_denoiser/configs/'+ name + '.json')
 config = json.load(f)
 
-orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
+orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
 # new_img_dir = orig_img_dir+"_binary_array"
 # for img_folder in glob(new_img_dir+"/*/"):
 #     for img_path in glob(img_folder+"/*"):
@@ -37,21 +37,21 @@ orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
 #     break
   
 # model_name = "improved_t1"
-experiment_dir=f"/home/wangdong/autoencoder_denoiser/experiment_data/{name}/"
+experiment_dir=f"/root/autoencoder_denoiser/experiment_data/{name}/"
 state_dict = torch.load(os.path.join(experiment_dir, 'latest_model.pt'))
 
 model = UNet(1,1,True) 
 model = torch.nn.DataParallel(model)
 model.load_state_dict(state_dict['model'])
 
-saved_dir = "/home/wangdong/autoencoder_denoiser/denoised_by_{}".format(name)
+saved_dir = "/root/autoencoder_denoiser/denoised_by_{}".format(name)
 if  args.dilation:
     saved_dir+="_dilation"
 if  args.resize:
     saved_dir+="_resize"
 saved_dir+="/"
 os.makedirs(saved_dir,exist_ok=True)
-orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
+orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
 # new_img_dir = orig_img_dir+"_binary_array"
 new_img_dir = orig_img_dir+"_binary_array"
 

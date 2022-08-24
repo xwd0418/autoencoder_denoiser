@@ -1,6 +1,5 @@
 from experiment import Experiment
 import sys
-from apis import  release_cuda
 
 
 # Main Driver for your code. Either run `python main.py` which will run the experiment with default config

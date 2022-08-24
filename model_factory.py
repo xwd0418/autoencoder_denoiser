@@ -1,3 +1,4 @@
+from logging import raiseExceptions
 from matplotlib.pyplot import axis
 import numpy as np
 import sys
@@ -33,6 +34,9 @@ def get_model(config):
     elif model_type == "Adv_UNet":
         print ("model: Adv_Unet")
         return Adv_Unet(1,1,config['model']['bilinear'], config['model']['features'])
+    elif model_type == "UNet_Single":
+        print ("model: Unet config as the paper indicated)")
+        return UNet_Single(1,1,config['model']['bilinear'],config['model']['dim'] )
     else : raise Exception("what is the model to use???")
 
 
@@ -103,43 +107,77 @@ class UNet(nn.Module):
             return logits, x5
         return logits
     
-class UNet_2D(nn.Module):
-    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False):
-        super(UNet_2D, self).__init__()
+class UNet_Single(nn.Module):
+    def __init__(self, n_channels_in, n_channels_out, bilinear, dim):
+        super(UNet_Single, self).__init__()
         self.n_channels_in = n_channels_in
         self.n_channels_out = n_channels_out
         self.bilinear = bilinear
-
-        self.inc = DoubleConv(n_channels_in, 64)
-        self.down1 = Down(64, 128)
-        self.down2 = Down(128, 256)
-        self.down3 = Down(256, 512)
-        factor = 2 if bilinear else 1
-        self.down4 = Down(512, 1024 // factor)
-        self.up1 = Up(1024, 512 // factor, bilinear)
-        self.up2 = Up(512, 256 // factor, bilinear)
-        self.up3 = Up(256, 128 // factor, bilinear)
-        self.up4 = Up(128, 64, bilinear)
-        self.outc = OutConv(64, n_channels_out)
-
-    def forward(self, x, tessellate_info=None, feature=False):
-        x1 = self.inc(x)
-        if tessellate_info!=None:
-            concatenated = torch.concat((x1, tessellate_info), 1)
-            x2 = self.down1(concatenated)
+        self.dim = dim
+        assert(dim == 1 or dim == 2)
+        if dim == 1:
+            down_channel = [64, 128, 256, 512,
+                            512, 512, 512, 512,
+                            512, 512, 512, 512,
+                            ]
+            up_channel = [512, 512, 512, 512,
+                          512, 1024, 1024, 1024,
+                          256, 128, 64, 64]
+            
         else:
-            x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        x5 = self.down4(x4)
-        # print('x5 shape is ', x5.shape)
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
+            down_channel = [64, 128, 256, 512,
+                            512, 512, 512, 512,
+                            512
+                            ]
+            up_channel = [512, 512, 1024, 1024,
+                           1024, 256, 128, 64,
+                          64]
+        encode_layers = []
+        encode_layers.append (SingleConv(n_channels_in, 64, dim=dim))
+        for i in range(len(down_channel)-1):
+            encode_layers.append(SingleDown(down_channel[i], down_channel[i+1], dim))
+
+        decode_layers = []
+        # factor = 2 if bilinear else 1
+        for i in range(len(down_channel)-1):
+            decode_layers.append(SingleUp(up_channel[i], up_channel[i+1] ,bilinear, dim))
+
+        self.outc = SingleOutConv(64, n_channels_out,dim)
+        
+        self.encode = nn.Sequential(*encode_layers)
+        self.decode = nn.Sequential(*decode_layers)
+
+    def forward(self, x, feature=False):
+        if self.dim ==1:
+            shape = x.shape
+            x = x.view(-1, 1, shape[3])
+        
+        encode_results=[x]
+        for layer in self.encode:
+            result = layer(encode_results[-1])
+            encode_results.append(result)
+        
+        # x1 = self.inc(x)
+        # if tessellate_info!=None:
+        #     concatenated = torch.concat((x1, tessellate_info), 1)
+        #     x2 = self.down1(concatenated)
+        # else:
+        #     x2 = self.down1(x1)
+        # x3 = self.down2(x2)
+        # x4 = self.down3(x3)
+        # x5 = self.down4(x4)
+        # # print('x5 shape is ', x5.shape)
+        x = encode_results[-1]
+        encode_results.pop()
+        for layer in self.decode:
+            x = layer(x, encode_results[-1])
+            encode_results.pop()
+            
         logits = self.outc(x)
+        if self.dim ==1:
+            logits = logits.view(shape)
         if feature:
-            return logits, x5
+            raise Exception("shouldn't ask for features here")
         return logits
 
 

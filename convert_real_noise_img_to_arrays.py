@@ -15,7 +15,7 @@ import shutil
 import matplotlib.image
 from glob import glob
 
-orig_img_dir = "/home/wangdong/autoencoder_denoiser/dataset/real_noise"
+orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
 # new_img_dir = orig_img_dir+"_binary_array"
 new_img_dir = orig_img_dir+"_greyscale"
 os.makedirs(new_img_dir, exist_ok = True) 

@@ -26,7 +26,24 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.double_conv(x)
 
+class SingleConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2"""
 
+    def __init__(self, in_channels, out_channels, dim):
+        super().__init__()
+        assert (dim==1 or dim==2)
+        conv_operation = nn.Conv2d if dim==2 else nn.Conv1d
+        batchNorm = nn.BatchNorm2d if dim==2 else nn.BatchNorm1d
+        self.conv = nn.Sequential(
+            conv_operation(in_channels, out_channels, kernel_size=4, stride=2,),
+            batchNorm(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        print(x.shape)
+        return self.conv(x)
+    
 class Down(nn.Module):
     """Downscaling with maxpool then double conv"""
 
@@ -40,6 +57,20 @@ class Down(nn.Module):
     def forward(self, x):
         return self.maxpool_conv(x)
 
+class SingleDown(nn.Module):
+    """Downscaling with maxpool then double conv"""
+
+    def __init__(self, in_channels, out_channels, dim):
+        super().__init__()
+        assert (dim==1 or dim==2)
+        # maxpool = nn.MaxPool2d if  dim==2 else nn.MaxPool1d
+        self.maxpool_conv = nn.Sequential(
+            # maxpool(2),
+            SingleConv(in_channels, out_channels, dim)
+        )
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
 
 class Up(nn.Module):
     """Upscaling then double conv"""
@@ -70,6 +101,47 @@ class Up(nn.Module):
         return self.conv(x)
 
 
+class SingleUp(nn.Module):
+    """Upscaling then double conv"""
+
+    def __init__(self, in_channels, out_channels, bilinear=True, dim=None):
+        super().__init__()
+        assert (dim==1 or dim==2)
+        self.dim = dim
+        # if bilinear, use the normal convolutions to reduce the number of channels
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+            self.conv = SingleConv(in_channels, out_channels, dim)
+        else:
+            transposeConv =  nn.ConvTranspose2d if  dim==2 else nn.ConvTranspose1d 
+            
+            
+            self.up = transposeConv(in_channels, in_channels // 2, kernel_size=4, stride=2)
+            self.conv = SingleConv(in_channels, out_channels, dim)
+
+    def forward(self, x1, x2):
+        if self.dim ==2:
+            x1 = self.up(x1)
+            # input is CHW
+            diffY = x2.size()[2] - x1.size()[2]
+            diffX = x2.size()[3] - x1.size()[3]
+
+            x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
+                            diffY // 2, diffY - diffY // 2])
+            # if you have padding issues, see
+            # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+            # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+            x = torch.cat([x2, x1], dim=1)
+            return self.conv(x)
+        else:
+            x1 = self.up(x1)
+            diff = x2.size()[2] - x1.size()[2]
+            x1 = F.pad(x1, [diff // 2, diff - diff // 2])
+            x = torch.cat([x2, x1], dim=1)
+            return self.conv(x)
+            
+
+
 class OutConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(OutConv, self).__init__()
@@ -77,6 +149,21 @@ class OutConv(nn.Module):
 
     def forward(self, x):
         return self.conv(x)
+    
+class SingleOutConv(nn.Module):
+    def __init__(self, in_channels, out_channels, dim):
+        super(SingleOutConv, self).__init__()
+        assert (dim==1 or dim==2)
+        conv_operation = nn.Conv2d if dim==2 else nn.Conv1d
+
+        self.conv = conv_operation(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        return self.conv(x)
+    
+    
+    
+    
     
 class MLP(torch.nn.Sequential):
     """This block implements the multi-layer perceptron (MLP) module.
