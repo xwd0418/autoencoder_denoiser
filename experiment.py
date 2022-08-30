@@ -1,5 +1,6 @@
 import json
-import os
+import os, math
+from traceback import print_tb
 # from autoencoder_denoiser.dataloader_deprecated import get_datasets, get_real_img_dataset
 from hsqc_dataset import  get_datasets, get_real_img_dataset
 from model_factory import get_model
@@ -111,7 +112,8 @@ class Experiment(object):
 
                 current_epoch = len(self.__training_accu)
  
-                state_dict = torch.load(os.path.join(self.__experiment_dir, 'latest_model.pt'))
+                state_dict = torch.load(os.path.join(os.path.join(ROOT_STATS_DIR, self.__name), 'latest_model.pt'))
+                # state_dict = torch.load(os.path.join(os.path.join(ROOT_STATS_DIR, "adv"), 'latest_model.pt'))
 
                 self.__model.load_state_dict(state_dict['model'])
                 self.best_model = copy.deepcopy(self.__model)
@@ -158,7 +160,7 @@ class Experiment(object):
             raw, noise = self.__move_to_cuda(data)
             if self.config['model']['model_type'] == "Adv_UNet":
                 real_img = next(self.__batch_iterator)[0].unsqueeze(1)
-                real_img = real_img.to(self.device)
+                real_img = real_img.float().to(self.device)
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
             
@@ -168,7 +170,6 @@ class Experiment(object):
                                                                     plain=False)
             else:    
                 prediction = self.__model.forward(noise)
-            
             # prediction = prediction.type(torch.float32)
             # print(prediction.shape, raw.shape)
             ground_truth = raw
@@ -181,11 +182,17 @@ class Experiment(object):
                 dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
                 adv_loss = torch.nn.BCELoss()(domain_prediction.squeeze(1), dc_target)
                 loss = loss + adv_loss
-            prediction = torch.clip(prediction.round(),0,1)
+            prediction = torch.clip(prediction,0,1)
             with torch.no_grad():
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
+                intersec = math.sqrt(intersec)
                 union = torch.sum(raw)+torch.sum(prediction)-intersec
                 accu =intersec / union
+                # print("sum of predict",np.sum(np.array(prediction.cpu())))
+                # print("sum of raw",np.sum(np.array(raw.cpu())))
+                # print('intersec' ,intersec)
+                # print("train IoU", accu)
+
                 if (accu > 1 or accu < 0) :
                     print("bug!")
                     print("raw is ", torch.sum(raw))
@@ -199,7 +206,6 @@ class Experiment(object):
             training_accu+=accu.item()
         training_loss/=(iter+1)
         training_accu/=(iter+1)
-        
         
         return training_loss,training_accu
 
@@ -224,11 +230,11 @@ class Experiment(object):
                 loss=self.__criterion(prediction,ground_truth )
                 val_loss+=loss.item() 
                 
-                #make prediction to int values
-                prediction = torch.clip(prediction.round(),0,1)
+                prediction = torch.clip(prediction,0,1)
                 
                 #draw sample pics
-                if self.__current_epoch% 15 ==0 and iter==0:
+                # if self.__current_epoch% 15 ==0 and iter==0:
+                if iter==0:
                     
                     if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
                         noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
@@ -259,13 +265,21 @@ class Experiment(object):
 
                 # find accuracy
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
+                intersec = math.sqrt(intersec)
+
+                # print('intersec',intersec)
                 batch_accu =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)                   
                 accu.append(batch_accu)
+                # print("sum of predict",np.sum(np.array(prediction.cpu())))
+                # print("sum of raw",np.sum(np.array(raw.cpu())))
+                # print('intersec' ,intersec)
+                # print("train IoU", batch_accu)
+
 
            
         val_loss = val_loss/(iter+1)
         
-        print("val accuracy", (sum(accu) / len(accu)).item()  )  
+        print("val IoU", (sum(accu) / len(accu)).item()  )  
         print("loss: ", val_loss) 
 
         if val_loss < self.__min_val_loss:
@@ -295,7 +309,7 @@ class Experiment(object):
                 raw, noise = data
                 prediction = self.__model(noise)
                 
-                prediction = torch.clip(prediction.round(),0,1)
+                prediction = torch.clip(prediction,0,1)
                 
                 if displayed<20:
                     noise_pic , prediction_pic, raw_pic = noise,prediction, raw
@@ -328,6 +342,7 @@ class Experiment(object):
                 # print (torch.sum(raw))
                 # print (np.sum(np.array(raw) * perdiction )) 
                 intersec = np.sum(np.array(raw) * prediction )
+                intersec = math.sqrt(intersec)
                 batch_accu = intersec/(torch.sum(raw)+np.sum(prediction)-intersec)
                 # batch_accu = np.sum(np.array(raw) * np.array(prediction ))/(np.sum(raw)+np.sum(prediction))
                 IoU.append(batch_accu)
@@ -341,7 +356,7 @@ class Experiment(object):
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = self.__move_to_cuda(data)
                 prediction = self.best_model(noise).data
-                prediction = torch.clip(prediction.round(),0,1)
+                prediction = torch.clip(prediction,0,1)
                 
                 ground_truth = raw
                 if self.config["experiment"]["loss_func"] == "CrossEntropy":
@@ -400,7 +415,7 @@ class Experiment(object):
                 # print (torch.sum(raw))
                 # print (np.sum(np.array(raw) * perdiction ))
                 intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
-                intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
+                intersec = math.sqrt(intersec)
                 union = (torch.sum(raw)+torch.sum(prediction)-intersec)
                 batch_accu =intersec / union
                 IoU.append(batch_accu)

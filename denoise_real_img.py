@@ -1,8 +1,6 @@
 
 import json
 import os
-from re import X
-from weakref import ref
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
@@ -11,6 +9,7 @@ import cv2
 import matplotlib.image
 from glob import glob
 import torch
+from model_factory import get_model
 import argparse
 from model_factory import UNet
 
@@ -40,11 +39,11 @@ orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
 experiment_dir=f"/root/autoencoder_denoiser/experiment_data/{name}/"
 state_dict = torch.load(os.path.join(experiment_dir, 'latest_model.pt'))
 
-model = UNet(1,1,True) 
+model = get_model(config)
 model = torch.nn.DataParallel(model)
 model.load_state_dict(state_dict['model'])
 
-saved_dir = "/root/autoencoder_denoiser/denoised_by_{}".format(name)
+saved_dir = "/root/autoencoder_denoiser/denoised_results/denoised_by_{}".format(name)
 if  args.dilation:
     saved_dir+="_dilation"
 if  args.resize:

@@ -24,6 +24,7 @@ class HSQCDataset(Dataset):
         
         self.hsqc_path = 'HSQC_plain_imgs_toghter'
         if self.config['dataset'].get("large_input"):
+            self.dir = "/data/hyun_fp_data/hsqc_ms_pairs/"
             self.hsqc_path = 'HSQC_plain_imgs_toghter_1800_1200'
             
         self.hsqc_files = list(os.listdir(os.path.join(self.dir, split, self.hsqc_path)))
@@ -180,7 +181,7 @@ def add_t1_noise(img, config):
 def generate_cross_noise(img, config):
     noise_probability = config['dataset']['cross_prob']
     output_noise = np.zeros(img.shape)
-    points =  np.array(np.where(img==1))
+    points =  np.array(np.where(img>0))
     points = points[:, np.random.permutation(points.shape[1])]
     points = points[:, 0:int(len(points[0])*noise_probability)]
     if len(points) == 0: 
