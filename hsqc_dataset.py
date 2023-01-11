@@ -39,9 +39,10 @@ class HSQCDataset(Dataset):
 
         raw_sample = torch.load(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         raw_sample = np.array(raw_sample, dtype="float32")
+        print(raw_sample.shape)
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
-            raw_sample = cv2.resize(raw_sample[0], (raw_sample.shape[2]*2,raw_sample.shape[1]*2), interpolation = cv2.INTER_AREA) 
+            raw_sample = cv2.resize(raw_sample[0], (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor), interpolation = cv2.INTER_AREA) 
         if self.config['dataset'].get('noise_factor') != None:
             if self.config["dataset"]["noise_factor"] == "random":
                 noise_factor = random.uniform(0.2,0.6)
@@ -50,7 +51,8 @@ class HSQCDataset(Dataset):
         else :
             noise_factor = 1
 
-
+        print(raw_sample.shape)
+        exit()
         # add noise based on provided noise type
         if self.config["dataset"]["noise_type"] == "random":
             self.config["dataset"]["noise_type"] = random.choice(["gaussian", "white" ])

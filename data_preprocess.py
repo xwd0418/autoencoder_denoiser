@@ -1,4 +1,4 @@
-"This file contains functions to precess images"
+"This file contains functions to process images"
 "Mainly tessellation"
 
 from scipy.spatial import Delaunay

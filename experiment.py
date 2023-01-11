@@ -184,21 +184,13 @@ class Experiment(object):
                 loss = loss + adv_loss
             prediction = torch.clip(prediction,0,1)
             with torch.no_grad():
-                intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
-                intersec = math.sqrt(intersec)
-                union = torch.sum(raw)+torch.sum(prediction)-intersec
-                accu =intersec / union
+                accu =  self.compute_batch_accu(raw, prediction)
                 # print("sum of predict",np.sum(np.array(prediction.cpu())))
                 # print("sum of raw",np.sum(np.array(raw.cpu())))
                 # print('intersec' ,intersec)
                 # print("train IoU", accu)
 
-                if (accu > 1 or accu < 0) :
-                    print("bug!")
-                    print("raw is ", torch.sum(raw))
-                    print("predict is ",torch.sum(prediction) )
-                    print("interesct is ", intersec )
-                    print("union is " , union)
+                assert not (accu > 1 or accu < 0)
                     
             loss.backward()
             self.__optimizer.step()
@@ -263,12 +255,10 @@ class Experiment(object):
                     displayed = True
                     plt.clf()
 
-                # find accuracy
-                intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu() ))
-                intersec = math.sqrt(intersec)
+               
 
                 # print('intersec',intersec)
-                batch_iou =intersec /(torch.sum(raw)+torch.sum(prediction)-intersec)                   
+                batch_iou = self.compute_batch_accu( raw, prediction)                 
                 accu.append(batch_iou)
                 # print("sum of predict",np.sum(np.array(prediction.cpu())))
                 # print("sum of raw",np.sum(np.array(raw.cpu())))
@@ -420,12 +410,6 @@ class Experiment(object):
                 # recall.append(recall_score(prediction.cpu().flatten(), raw.cpu().flatten()))
                 # f1.append(f1_score(prediction.cpu().flatten(), raw.cpu().flatten()))
                 
-                if (batch_iou > 1 or batch_iou < 0) :
-                    print("bug!")
-                    print("raw is ", torch.sum(raw))
-                    print("predict is ",torch.sum(prediction) )
-                    print("interesct is ", intersec )
-                    print("union is " , union)
                 # print(accu)
                 
             test_loss /= len(IoU)
@@ -450,16 +434,26 @@ class Experiment(object):
 
     def compute_batch_accu(self, raw, prediction):
         raw_cpu, pred_cpu = np.array(raw.cpu()), np.array(prediction.cpu() )
-        intersec = np.sqrt(raw_cpu * pred_cpu)
-                # intersec = math.sqrt(intersec)
-        union = raw_cpu+pred_cpu-intersec
-        # print("intersec",intersec[0,0,0,0],"union", union[0,0,0,0])
-        batch_iou =intersec / union
-        filtered_iou = [x for x in list(batch_iou.flatten()) if math.isnan(x) == False]
-        print(filtered_iou)
-        print(np.mean(filtered_iou))
-        exit()
-        return np.mean(batch_iou)
+        
+        '''this computes the accuracy on intensity'''
+        # intersec = np.sqrt(raw_cpu * pred_cpu)
+        #         # intersec = math.sqrt(intersec)
+        # union = raw_cpu+pred_cpu-intersec
+        # # print("intersec",intersec[0,0,0,0],"union", union[0,0,0,0])
+        # batch_iou =intersec / union
+        # filtered_iou = [x for x in list(batch_iou.flatten()) if math.isnan(x) == False and x>0]
+        # # print(filtered_iou[0])
+        # print(np.mean(filtered_iou))
+        # return np.mean(filtered_iou)
+        
+        
+        '''this computes IoU'''
+        intersec = np.minimum(raw_cpu , pred_cpu)
+        union = np.maximum(raw_cpu , pred_cpu)
+        batch_iou = np.sum(intersec) / np.sum(union)
+        
+        # exit()
+        return batch_iou
 
     def __init_model(self):
         if torch.cuda.is_available():

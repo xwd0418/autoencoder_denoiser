@@ -26,14 +26,7 @@ if args.dilation == True and args.resize==True:
 f = open('/root/autoencoder_denoiser/configs/'+ name + '.json')
 config = json.load(f)
 
-orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
-# new_img_dir = orig_img_dir+"_binary_array"
-# for img_folder in glob(new_img_dir+"/*/"):
-#     for img_path in glob(img_folder+"/*"):
-#         img = np.load(img_path)
-#         plt.imshow(img, cmap="Greys")
-#         break
-#     break
+
   
 # model_name = "improved_t1"
 experiment_dir=f"/root/autoencoder_denoiser/experiment_data/{name}/"
@@ -52,7 +45,7 @@ saved_dir+="/"
 os.makedirs(saved_dir,exist_ok=True)
 orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
 # new_img_dir = orig_img_dir+"_binary_array"
-new_img_dir = orig_img_dir+"_binary_array"
+new_img_dir = orig_img_dir+"_greyscale"
 
 clist = [(0,"green"), (0.25,"white"), (0.75, "black"), (1, "red")]
 # red means noise
