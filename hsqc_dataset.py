@@ -22,8 +22,9 @@ class HSQCDataset(Dataset):
         # assert(os.path.exists(self.orig_hsqc))
         assert(split in ["train", "val", "test"])
         
-        self.hsqc_path = 'HSQC_plain_imgs_toghter'
+        self.hsqc_path = 'HSQC_trimmed'
         if self.config['dataset'].get("large_input"):
+            raise Exception("deprecated usaged of 1800*1200 size imgs")
             self.dir = "/data/hyun_fp_data/hsqc_ms_pairs/"
             self.hsqc_path = 'HSQC_plain_imgs_toghter_1800_1200'
             
@@ -39,7 +40,6 @@ class HSQCDataset(Dataset):
 
         raw_sample = torch.load(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         raw_sample = np.array(raw_sample, dtype="float32")
-        print(raw_sample.shape)
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
             raw_sample = cv2.resize(raw_sample[0], (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor), interpolation = cv2.INTER_AREA) 
@@ -51,26 +51,25 @@ class HSQCDataset(Dataset):
         else :
             noise_factor = 1
 
-        print(raw_sample.shape)
-        exit()
+   
         # add noise based on provided noise type
         if self.config["dataset"]["noise_type"] == "random":
             self.config["dataset"]["noise_type"] = random.choice(["gaussian", "white" ])
         elif self.config["dataset"]["noise_type"] == "gaussian":
             noisy_sample = raw_sample + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=raw_sample.shape)
         elif self.config["dataset"]["noise_type"] == "white":    
-            noisy_sample = raw_sample + noise_factor * np.random.uniform(low=0.0, high=1.0, size=raw_sample.shape)
+            noisy_sample = raw_sample + noise_factor * np.random.uniform(low=-1.0, high=1.0, size=raw_sample.shape)
         elif self.config["dataset"]["noise_type"] == "t1": 
             noisy_sample = add_t1_noise(raw_sample, self.config)
             white_noise_rate=self.config['dataset'].get('white_noise_rate')
             if white_noise_rate is not None:
-                noisy_sample += self.config["dataset"]["noise_factor"] * np.random.binomial(1, white_noise_rate,  size=raw_sample.shape)
+                noisy_sample += self.config["dataset"]["noise_factor"] * np.random.uniform(low=-1.0, high=1.0, size=raw_sample.shape)
 
 
         else:
             raise Exception("unkown type of noise {}".format(self.config["dataset"]["noise_type"]))
        
-        noisy_sample = np.clip(noisy_sample, 0., 1.)
+        noisy_sample = np.clip(noisy_sample, -1. , 1.)
 
 
         if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':

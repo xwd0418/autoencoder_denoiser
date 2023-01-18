@@ -15,10 +15,11 @@ import matplotlib.image
 from sklearn.metrics import f1_score, average_precision_score, recall_score
 
 
-ROOT_STATS_DIR = "./experiment_data"
+ROOT_STATS_DIR = "./results_to_compare"
 class Experiment(object):
     def __init__(self, name):
         f = open('/root/autoencoder_denoiser/configs/'+ name + '.json')
+        # global config
         config = json.load(f)
         config['experiment_name'] = name
         self.config = config
@@ -45,8 +46,8 @@ class Experiment(object):
         self.__current_epoch = 0
         self.__training_losses = []
         self.__val_losses = []
-        self.__training_accu = []
-        self.__val_accu = []
+        self.__training_SNR_increase = []
+        self.__val_SNR_increase = []
         self.__min_val_loss = 999999
         self.__learning_rate = config['experiment']['learning_rate']
 
@@ -107,10 +108,10 @@ class Experiment(object):
             try:
                 training_losses = read_file_in_dir(self.__experiment_dir, 'training_losses.txt')
                 val_losses = read_file_in_dir(self.__experiment_dir, 'val_losses.txt')
-                self.__training_accu = read_file_in_dir(self.__experiment_dir, 'training_accu.txt')
-                self.__val_accu = read_file_in_dir(self.__experiment_dir, 'val_accu.txt')
+                self.__training_SNR_increase = read_file_in_dir(self.__experiment_dir, 'training_accu.txt')
+                self.__val_SNR_increase = read_file_in_dir(self.__experiment_dir, 'val_accu.txt')
 
-                current_epoch = len(self.__training_accu)
+                current_epoch = len(self.__training_SNR_increase)
  
                 state_dict = torch.load(os.path.join(os.path.join(ROOT_STATS_DIR, self.__name), 'latest_model.pt'))
                 # state_dict = torch.load(os.path.join(os.path.join(ROOT_STATS_DIR, "adv"), 'latest_model.pt'))
@@ -139,21 +140,21 @@ class Experiment(object):
             self.__current_epoch+=1
             print("epoch: ",self.__current_epoch)
             train_loss, train_accu = self.__train()
-            val_loss,val_accu = self.__val()
+            val_loss,val_SNR_increase = self.__val()
             
             if self.__lr_scheduler is not None:
                 if self.lr_scheduler_type == "criterion":
                     self.__lr_scheduler.step(val_loss)
                 else: 
                     self.__lr_scheduler.step()
-            self.__record_stats(train_loss,train_accu, val_loss,val_accu)
+            self.__record_stats(train_loss,train_accu, val_loss,val_SNR_increase)
         self.plot_stats()
 
 
     def __train(self):
         self.__model.train()
         training_loss = 0
-        training_accu = 0
+        training_SNR_increase = 0
         # temp
         # Iterate over the data, implement the training function
         for iter, data in enumerate(tqdm(self.__train_loader)):
@@ -176,7 +177,7 @@ class Experiment(object):
             if self.config["experiment"]["loss_func"] == "CrossEntropy":
                 ground_truth = raw[:,0,:,:]
                 
-            loss=self.__criterion(prediction,ground_truth )
+            loss = self.__criterion(prediction,ground_truth )
             
             if self.config['model']['model_type'] == "Adv_UNet":
                 dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
@@ -184,29 +185,29 @@ class Experiment(object):
                 loss = loss + adv_loss
             prediction = torch.clip(prediction,0,1)
             with torch.no_grad():
-                accu =  self.compute_batch_accu(raw, prediction)
+                SNR_inc =  self.SNR_increase( raw, noise, prediction)
                 # print("sum of predict",np.sum(np.array(prediction.cpu())))
                 # print("sum of raw",np.sum(np.array(raw.cpu())))
                 # print('intersec' ,intersec)
                 # print("train IoU", accu)
 
-                assert not (accu > 1 or accu < 0)
+                # assert not (accu > 1 or accu < 0)
                     
             loss.backward()
             self.__optimizer.step()
             training_loss+=loss.item()
-            training_accu+=accu.item()
+            training_SNR_increase+=SNR_inc
         training_loss/=(iter+1)
-        training_accu/=(iter+1)
+        training_SNR_increase/=(iter+1)
         
-        return training_loss,training_accu
+        return training_loss,training_SNR_increase
 
     
 
     def __val(self):
         # print("validating stage")
 
-        accu = []
+        total_SNR_increase = 0
         self.__model.eval()
         val_loss = 0
         with torch.no_grad():
@@ -222,7 +223,9 @@ class Experiment(object):
                 loss=self.__criterion(prediction,ground_truth )
                 val_loss+=loss.item() 
                 
-                prediction = torch.clip(prediction,0,1)
+                prediction = torch.clip(prediction,-1,1)
+                
+                total_SNR_increase += self.SNR_increase( raw, noise, prediction)
                 
                 #draw sample pics
                 # if self.__current_epoch% 15 ==0 and iter==0:
@@ -255,21 +258,11 @@ class Experiment(object):
                     displayed = True
                     plt.clf()
 
-               
-
-                # print('intersec',intersec)
-                batch_iou = self.compute_batch_accu( raw, prediction)                 
-                accu.append(batch_iou)
-                # print("sum of predict",np.sum(np.array(prediction.cpu())))
-                # print("sum of raw",np.sum(np.array(raw.cpu())))
-                # print('intersec' ,intersec)
-                # print("train IoU", batch_iou)
-
-
            
         val_loss = val_loss/(iter+1)
+        total_SNR_increase = total_SNR_increase/(iter+1)
         
-        print("val IoU", (sum(accu) / len(accu)).item()  )  
+        print("SNR increased by",total_SNR_increase  )  
         print("loss: ", val_loss) 
 
         if val_loss < self.__min_val_loss:
@@ -279,15 +272,20 @@ class Experiment(object):
             self.best_epoch = self.__current_epoch
             self.best_model = copy.deepcopy(self.__model)
 
-        return val_loss,(sum(accu) / len(accu)).item()  
+        return val_loss , total_SNR_increase
 
     def test(self):
         print("testing stage")
-        IoU = []
-        recall = []
-        precision = []
-        f1= []
+        # IoU = []
+        # recall = []
+        # precision = []
+        # f1= []
         test_loss= 0
+        
+        orig_SNR, denoised_SNR = 0,0
+        total_SNR_increase = 0
+        self.__model.eval()
+        
         displayed = 0
         samples_path = self.__experiment_dir+"/sample_imgs"
         os.makedirs(samples_path, exist_ok=True)
@@ -346,13 +344,16 @@ class Experiment(object):
             for iter, data in enumerate(tqdm(self.__test_loader)):
                 raw, noise = self.__move_to_cuda(data)
                 prediction = self.best_model(noise).data
-                prediction = torch.clip(prediction,0,1)
+                prediction = torch.clip(prediction,-1,1)
                 
                 ground_truth = raw
                 if self.config["experiment"]["loss_func"] == "CrossEntropy":
                     ground_truth = raw[:,0,:,:]
                 loss=self.__criterion(prediction,ground_truth )
                 test_loss+=loss.item() 
+                orig_SNR += self.compute_SNR( raw, noise)
+                denoised_SNR += self.compute_SNR( raw, prediction)
+                total_SNR_increase +=  self.SNR_increase( raw, noise, prediction)
                 
                 clist = [(0,"green"), (0.5,"black"), (1, "red")]
                 custom_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",clist)
@@ -404,56 +405,51 @@ class Experiment(object):
                 
                 # print (torch.sum(raw))
                 # print (np.sum(np.array(raw) * perdiction ))
-                batch_iou = self.compute_batch_accu(raw, prediction)
-                IoU.append(batch_iou)
+                # batch_iou = self.compute_batch_accu(raw, prediction)
+                # IoU.append(batch_iou)
                 # precision.append(average_precision_score(prediction.cpu().flatten(), raw.cpu().flatten()))
                 # recall.append(recall_score(prediction.cpu().flatten(), raw.cpu().flatten()))
                 # f1.append(f1_score(prediction.cpu().flatten(), raw.cpu().flatten()))
                 
                 # print(accu)
                 
-            test_loss /= len(IoU)
-            avg_IoU = (sum(IoU) / len(IoU)).item()
-            precision_result = sum(precision) / len(IoU)
-            recall_result = sum(recall) / len(IoU)
-            f1_result = sum(f1) / len(IoU)
-            print("avg IoU is ",avg_IoU)
-            print("avg precision is",precision_result )
+            test_loss /= (iter+1)
+            total_SNR_increase /= (iter+1)
+            orig_SNR /= (iter+1)
+            denoised_SNR /= (iter+1)
+            # avg_IoU = (sum(IoU) / len(IoU)).item()
+            # precision_result = sum(precision) / len(IoU)
+            # recall_result = sum(recall) / len(IoU)
+            # f1_result = sum(f1) / len(IoU)
+            # print("avg IoU is ",avg_IoU)
+            # print("avg precision is",precision_result )
             # print("avg recall  is",recall_result )
             # print("avg f1 score is",f1_result )
             print("avg testing loss is ", test_loss)
             
             output_msg = {"loss":test_loss, 
-                          "IoU":avg_IoU,
-                          "precision": precision_result,
+                          "orig_SNR": orig_SNR,
+                          "denoised_SNR": denoised_SNR,
+                          "SNR_increase":total_SNR_increase,
+                        #   "precision": precision_result,
                         #   "recall": recall_result,
                         #   "f1 score":f1_result
             }
             write_to_file_in_dir(self.__experiment_dir, 'testing result.txt', output_msg)
-            return avg_IoU
+            return 
 
-    def compute_batch_accu(self, raw, prediction):
-        raw_cpu, pred_cpu = np.array(raw.cpu()), np.array(prediction.cpu() )
+    def compute_SNR(self, raw, noisy_img):
         
-        '''this computes the accuracy on intensity'''
-        # intersec = np.sqrt(raw_cpu * pred_cpu)
-        #         # intersec = math.sqrt(intersec)
-        # union = raw_cpu+pred_cpu-intersec
-        # # print("intersec",intersec[0,0,0,0],"union", union[0,0,0,0])
-        # batch_iou =intersec / union
-        # filtered_iou = [x for x in list(batch_iou.flatten()) if math.isnan(x) == False and x>0]
-        # # print(filtered_iou[0])
-        # print(np.mean(filtered_iou))
-        # return np.mean(filtered_iou)
+        signal = torch.mean(torch.abs(raw))
+        noise =  torch.mean((noisy_img - raw)**2)
+        noise = torch.sqrt(noise)
         
-        
-        '''this computes IoU'''
-        intersec = np.minimum(raw_cpu , pred_cpu)
-        union = np.maximum(raw_cpu , pred_cpu)
-        batch_iou = np.sum(intersec) / np.sum(union)
-        
-        # exit()
-        return batch_iou
+        return (signal/noise).item()
+    
+    def SNR_increase(self, raw, noise, prediction):
+        orig_SNR = self.compute_SNR(raw, noise)
+        denoised_SNR = self.compute_SNR(raw, prediction)
+        return denoised_SNR/orig_SNR
 
     def __init_model(self):
         if torch.cuda.is_available():
@@ -463,13 +459,13 @@ class Experiment(object):
     def __record_stats(self, train_loss,train_accu, val_loss,val_accu):
         self.__training_losses.append(train_loss)
         self.__val_losses.append(val_loss)
-        self.__training_accu.append(train_accu)
-        self.__val_accu.append(val_accu)
+        self.__training_SNR_increase.append(train_accu)
+        self.__val_SNR_increase.append(val_accu)
 
         write_to_file_in_dir(self.__experiment_dir, 'training_losses.txt', self.__training_losses)
         write_to_file_in_dir(self.__experiment_dir, 'val_losses.txt', self.__val_losses)
-        write_to_file_in_dir(self.__experiment_dir, 'training_accu.txt', self.__training_accu)
-        write_to_file_in_dir(self.__experiment_dir, 'val_accu.txt', self.__val_accu)
+        write_to_file_in_dir(self.__experiment_dir, 'training_accu.txt', self.__training_SNR_increase)
+        write_to_file_in_dir(self.__experiment_dir, 'val_accu.txt', self.__val_SNR_increase)
 
     def __save_model(self):
         root_model_path = os.path.join(self.__experiment_dir, 'latest_model.pt')
@@ -502,11 +498,11 @@ class Experiment(object):
         
         #validation        
         plt.clf()
-        e = len(self.__training_accu)
+        e = len(self.__training_SNR_increase)
         x_axis = np.arange(1, e + 1, 1)
         plt.figure()
-        plt.plot(x_axis, self.__training_accu, label="Training Accuracy")
-        plt.plot(x_axis, self.__val_accu, label="Validation Accuracy")
+        plt.plot(x_axis, self.__training_SNR_increase, label="Training Accuracy")
+        plt.plot(x_axis, self.__val_SNR_increase, label="Validation Accuracy")
         plt.xlabel("Epochs")
         plt.legend(loc='best')
         plt.title(self.__name + " Accu Plot")
@@ -531,8 +527,8 @@ class Experiment(object):
             e = len(self.__training_losses) -5
             x_axis = np.arange(1, e + 1, 1)
             plt.figure()
-            plt.plot(x_axis, self.__training_accu[5:], label="Training Accu")
-            plt.plot(x_axis, self.__val_accu[5:], label="Validation Accu")
+            plt.plot(x_axis, self.__training_SNR_increase[5:], label="Training Accu")
+            plt.plot(x_axis, self.__val_SNR_increase[5:], label="Validation Accu")
             plt.xlabel("Epochs")
             plt.legend(loc='best')
             plt.title(self.__name + " Accu Plot")

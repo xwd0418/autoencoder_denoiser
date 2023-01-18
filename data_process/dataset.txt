@@ -1,0 +1,15 @@
+torch.save(imgs, f"{dir}{split}/HSQC_plain_imgs/{file}")
+shape 2*180*120 (pos and neg)
+pos and neg original dots , absoluted and normalized to (0,1)
+
+torch.save(tessellations, f"{dir}{split}/HSQC_tessellation_imgs/{file}")
+shape 2*180*120
+pos and neg tessellation , absoluted and normalized to (0,1)
+
+torch.save(img, f"{dir}{split}/HSQC_plain_imgs_toghter/{file}")
+shape 1*180*120
+dots, normalized to (0,1), absoluted
+
+
+torch.save(img, f"{dir}{split}/HSQC_trimmed/{file}")
+just covert to shape  1*180*120 ,   normalized , not absoluted

@@ -66,28 +66,29 @@ class JNet(nn.Module):
         return self.unet.forward(noisy_sample, tessellate_info=tessellation3)
 
 class UNet(nn.Module):
-    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False):
+    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False, oneD=False):
         super(UNet, self).__init__()
         self.n_channels_in = n_channels_in
         self.n_channels_out = n_channels_out
         self.bilinear = bilinear
 
-        self.inc = DoubleConv(n_channels_in, 64)
+        self.inc = DoubleConv(n_channels_in, 64, oneD=oneD)
         if tessllation:
-            self.down1 = Down(128,128)
+            self.down1 = Down(128,128, oneD=oneD)
         else:
-            self.down1 = Down(64, 128)
-        self.down2 = Down(128, 256)
-        self.down3 = Down(256, 512)
+            self.down1 = Down(64, 128, oneD=oneD)
+        self.down2 = Down(128, 256, oneD=oneD)
+        self.down3 = Down(256, 512, oneD=oneD)
         factor = 2 if bilinear else 1
-        self.down4 = Down(512, 1024 // factor)
-        self.up1 = Up(1024, 512 // factor, bilinear)
-        self.up2 = Up(512, 256 // factor, bilinear)
-        self.up3 = Up(256, 128 // factor, bilinear)
-        self.up4 = Up(128, 64, bilinear)
-        self.outc = OutConv(64, n_channels_out)
+        self.down4 = Down(512, 1024 // factor, oneD=oneD)
+        self.up1 = Up(1024, 512 // factor, bilinear, oneD=oneD)
+        self.up2 = Up(512, 256 // factor, bilinear, oneD=oneD)
+        self.up3 = Up(256, 128 // factor, bilinear, oneD=oneD)
+        self.up4 = Up(128, 64, bilinear, oneD=oneD)
+        self.outc = OutConv(64, n_channels_out, oneD=oneD)
 
     def forward(self, x, tessellate_info=None, feature=False):
+        # print("why is 2",x.shape)
         x1 = self.inc(x)
         if tessellate_info!=None:
             concatenated = torch.concat((x1, tessellate_info), 1)
@@ -108,41 +109,52 @@ class UNet(nn.Module):
         return logits
     
 class UNet_Single(nn.Module):
-    def __init__(self, n_channels_in, n_channels_out, bilinear, dim):
+    def __init__(self, n_channels_in, n_channels_out, bilinear, dim, channel_specs=None):
         super(UNet_Single, self).__init__()
         self.n_channels_in = n_channels_in
         self.n_channels_out = n_channels_out
         self.bilinear = bilinear
         self.dim = dim
         assert(dim == 1 or dim == 2)
-        if dim == 1:
-            down_channel = [64, 128, 256, 512,
-                            512, 512, 512, 512,
-                            512, 512, 512, 512,
-                            ]
-            up_channel = [512, 512, 512, 512,
-                          512, 1024, 1024, 1024,
-                          256, 128, 64, 64]
-            
+        
+        if channel_specs==None:
+            if dim == 1:
+                down_channel = [64, 128, 256, 512,
+                                512, 512, 512, 512,
+                                512, 512, 512, 512,
+                                ]
+                up_channel = [512, 512, 512, 512,
+                              512, 1024, 1024, 1024,
+                              256, 128, 64, 64]
+                # up_channel = [512, 256, 128, 64]
+                
+            else:
+                down_channel = [64, 128, 256, 512,
+                                512, 512, 512, 512,
+                                512
+                                ]
+                up_channel = [512, 512, 1024, 1024,
+                            1024, 256, 128, 64,
+                            64]
         else:
-            down_channel = [64, 128, 256, 512,
-                            512, 512, 512, 512,
-                            512
-                            ]
-            up_channel = [512, 512, 1024, 1024,
-                           1024, 256, 128, 64,
-                          64]
+            down_channel = channel_specs[0]
+            up_channel = channel_specs[1]
+            
+        self.intro_conv = nn.Conv1d(n_channels_in, 64, kernel_size=3, padding=1)
         encode_layers = []
-        encode_layers.append (SingleConv(n_channels_in, 64, dim=dim))
+        encode_layers.append (SingleConv(64, 64, dim=dim))
         for i in range(len(down_channel)-1):
+            # print("channels", down_channel[i], down_channel[i+1])
             encode_layers.append(SingleDown(down_channel[i], down_channel[i+1], dim))
 
         decode_layers = []
         # factor = 2 if bilinear else 1
+        
+        decode_layers.append(SingleUp(down_channel[-1], up_channel[0] ,bilinear, dim))
         for i in range(len(down_channel)-1):
-            decode_layers.append(SingleUp(up_channel[i], up_channel[i+1] ,bilinear, dim))
+            decode_layers.append(SingleUp(up_channel[i]+down_channel[-(i+2)], up_channel[i+1] ,bilinear, dim))
 
-        self.outc = SingleOutConv(64, n_channels_out,dim)
+        self.outc = SingleOutConv(128, n_channels_out,dim)
         
         self.encode = nn.Sequential(*encode_layers)
         self.decode = nn.Sequential(*decode_layers)
@@ -150,12 +162,16 @@ class UNet_Single(nn.Module):
     def forward(self, x, feature=False):
         if self.dim ==1:
             shape = x.shape
-            x = x.view(-1, 1, shape[3])
+            # print('orig shape', shape)
+            x = x.view(-1, 1, shape[-1])
         
+        x=self.intro_conv(x)
+        # print("after into ", x.shape)
         encode_results=[x]
         for layer in self.encode:
             result = layer(encode_results[-1])
             encode_results.append(result)
+        # print('result shape is ', result.shape)
         
         # x1 = self.inc(x)
         # if tessellate_info!=None:
@@ -173,8 +189,11 @@ class UNet_Single(nn.Module):
             x = layer(x, encode_results[-1])
             encode_results.pop()
             
+        # print("x shape", x.shape)
         logits = self.outc(x)
         if self.dim ==1:
+            # print("logit shape", logits.shape)
+            # print('orig shape', shape)
             logits = logits.view(shape)
         if feature:
             raise Exception("shouldn't ask for features here")
@@ -188,7 +207,7 @@ class Discriminator(nn.Module):
     
     def forward(self, x):
         x = nn.AdaptiveAvgPool2d(1)(x)
-        print("after avg pool", x.shape)
+        # print("after avg pool", x.shape)
         x = self.MLP(x)
 
 class AdversarialNetwork(nn.Module):
