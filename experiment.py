@@ -559,12 +559,45 @@ def calc_coeff(iter_num, high=1.0, low=0.0, alpha=10.0, max_iter=1000.0):
 
 # SNR helper:
 
+class Metric():
+    
+    def init(self):
+        self.reset()
+        
+    def reset(self):
+        self.snr_orig  = 0
+        self.snr_denoised = 0
+        self.snr_inc  = 0
+        self.wsnr_orig = 0
+        self.wsnr_denoised = 0
+        self.wsnr_inc  = 0
+    
+    def update(self, raw, noise, prediction):
+        orig_SNR, denoised_SNR, orig_wSNR, denoised_wSNR, SNR_inc, wSNR_inc = compute_metrics(raw, noise, prediction)
+        self.snr_orig  += orig_SNR
+        self.snr_denoised += denoised_SNR
+        self.snr_inc += SNR_inc
+        self.wsnr_orig += orig_wSNR
+        self.wsnr_denoised += denoised_wSNR
+        self.wsnr_inc  += wSNR_inc
+        
+    def avg(self, total_num):
+        self.snr_orig  /= total_num
+        self.snr_denoised /= total_num
+        self.snr_inc  /= total_num
+        self.wsnr_orig /= total_num
+        self.wsnr_denoised /= total_num
+        self.wsnr_inc  /= total_num
+
+
 """SNR was defined as dividing intensity of the highest peak by the standard 
 deviation of a manually selected noise region without signal"""
 
 def compute_SNR(raw, noisy_img): 
     high_peak = torch.max(torch.abs(raw))
     std =  torch.std(noisy_img - raw)
+    # print(high_peak)
+    # print(std)
     
     return (high_peak/std).item()
 
@@ -572,3 +605,30 @@ def SNR_increase(raw, noise, prediction):
     orig_SNR = compute_SNR(raw, noise)
     denoised_SNR = compute_SNR(raw, prediction)
     return denoised_SNR/orig_SNR
+
+""" dividing intensity of the weakest peak by the manually selected noise region used and named wSNR"""
+def compute_wSNR(raw, noisy_img): 
+    low_peak = torch.min(raw[torch.nonzero(raw)])
+    std =  torch.std(noisy_img - raw)
+    return (low_peak/std).item()
+
+
+def wSNR_increase(raw, noise, prediction):
+    orig_wSNR = compute_wSNR(raw, noise)
+    denoised_wSNR = compute_wSNR(raw, prediction)
+    return denoised_wSNR/orig_wSNR
+
+def compute_metrics(raw, noise, prediction):
+    orig_SNR = compute_SNR(raw, noise)
+    denoised_SNR = compute_SNR(raw, prediction)
+    orig_wSNR = compute_wSNR(raw, noise)
+    denoised_wSNR = compute_wSNR(raw, prediction)
+    SNR_inc = denoised_SNR/orig_SNR
+    wSNR_inc = denoised_wSNR/orig_wSNR
+    
+    return orig_SNR, denoised_SNR, orig_wSNR, denoised_wSNR, SNR_inc, wSNR_inc
+
+
+    
+
+    
