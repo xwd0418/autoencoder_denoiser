@@ -13,6 +13,7 @@ from tqdm import tqdm
 import sys
 sys.path.append('../autoencoder_denoiser')
 from model_factory import *
+from experiment import compute_SNR , SNR_increase
 
 
 class One_D_Dataset(Dataset):
@@ -25,6 +26,8 @@ class One_D_Dataset(Dataset):
         self.ref = [ os.path.join("/root/autoencoder_denoiser/previous_paper_denoise/gen_dataset/1d", split, f)\
             for f in os.listdir(os.path.join("/root/autoencoder_denoiser/previous_paper_denoise/gen_dataset", "1d", split))]
         
+        self.ref = sorted(self.ref)
+        self.noise = sorted(self.noise)
 
     def __len__(self):
         return len(self.noise)
@@ -48,18 +51,20 @@ specs = ( [64, 128, 1024],
         # 512, 1024, 1024, 1024,
         [ 512, 256, 64])
     
-# model = UNet_Single(1,1,False,1,channel_specs= None)
-model = UNet(1,1,False, oneD=True)
+model = UNet_Single(1,1,False,1,channel_specs= None)
+# model = UNet(1,1,False, oneD=True)
 model = torch.nn.DataParallel(model).to("cuda")
 
 # config
-saved_dir = "/root/autoencoder_denoiser/previous_paper_denoise/oneD_sample_orig_UNet"
+saved_dir = "/root/autoencoder_denoiser/previous_paper_denoise/oneD_sample"
+os.makedirs(saved_dir, exist_ok=True)
+log_file = open(saved_dir+"/log.txt", "w")
 
 curr_epoch = 0
 
 epoch = 200
-lr = 0.00001
-lr_step = 15
+lr = 0.001
+lr_step = 5
 lr_gamma = 0.01
 betas = (0.7, 0.9)
 batch=4
@@ -80,19 +85,6 @@ test_losses = 0
 train_snr = 0
 val_snr = 0
 test_snr  = 0
-
-# SNR helper
-def compute_SNR( raw, noisy_img):
-        
-        signal = torch.mean(torch.abs(raw))
-        noise =  torch.mean((noisy_img - raw)**2)
-        noise = torch.sqrt(noise)
-        return (signal/noise).item()
-    
-def SNR_increase(raw, noise, prediction):
-        orig_SNR = compute_SNR(raw, noise)
-        denoised_SNR = compute_SNR(raw, prediction)
-        return denoised_SNR/orig_SNR
     
 
 
@@ -170,8 +162,7 @@ train_snr_list = []
 val_loss_list = []
 val_snr_list = []
 
-import os
-os.makedirs(saved_dir, exist_ok=True)
+
 
 for i in tqdm(range(epoch)):  # loop over the dataset multiple times
             curr_epoch+=1
@@ -182,6 +173,9 @@ for i in tqdm(range(epoch)):  # loop over the dataset multiple times
             val_loss_list.append(val_loss)
             train_snr_list.append(train_accu)
             val_snr_list.append(val_SNR_increase)
-            print("val snr increase is: ", round(val_SNR_increase,2), "val loss is ", round(val_loss,2),  "train loss is ", round(train_loss,2))
+            
+            msg = f"val snr increase is:  {round(val_SNR_increase,3)}, val loss is  {round(val_loss,5)},  train loss is  {round(train_loss,5)} \n"
+            print(msg)
+            log_file.write(msg)
             
             lr_scheduler.step()

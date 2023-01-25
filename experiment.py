@@ -185,7 +185,7 @@ class Experiment(object):
                 loss = loss + adv_loss
             prediction = torch.clip(prediction,0,1)
             with torch.no_grad():
-                SNR_inc =  self.SNR_increase( raw, noise, prediction)
+                SNR_inc =  SNR_increase( raw, noise, prediction)
                 # print("sum of predict",np.sum(np.array(prediction.cpu())))
                 # print("sum of raw",np.sum(np.array(raw.cpu())))
                 # print('intersec' ,intersec)
@@ -225,7 +225,7 @@ class Experiment(object):
                 
                 prediction = torch.clip(prediction,-1,1)
                 
-                total_SNR_increase += self.SNR_increase( raw, noise, prediction)
+                total_SNR_increase += SNR_increase( raw, noise, prediction)
                 
                 #draw sample pics
                 # if self.__current_epoch% 15 ==0 and iter==0:
@@ -351,9 +351,9 @@ class Experiment(object):
                     ground_truth = raw[:,0,:,:]
                 loss=self.__criterion(prediction,ground_truth )
                 test_loss+=loss.item() 
-                orig_SNR += self.compute_SNR( raw, noise)
-                denoised_SNR += self.compute_SNR( raw, prediction)
-                total_SNR_increase +=  self.SNR_increase( raw, noise, prediction)
+                orig_SNR += compute_SNR( raw, noise)
+                denoised_SNR += compute_SNR( raw, prediction)
+                total_SNR_increase += SNR_increase( raw, noise, prediction)
                 
                 clist = [(0,"green"), (0.5,"black"), (1, "red")]
                 custom_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",clist)
@@ -438,18 +438,7 @@ class Experiment(object):
             write_to_file_in_dir(self.__experiment_dir, 'testing result.txt', output_msg)
             return 
 
-    def compute_SNR(self, raw, noisy_img):
-        
-        signal = torch.mean(torch.abs(raw))
-        noise =  torch.mean((noisy_img - raw)**2)
-        noise = torch.sqrt(noise)
-        
-        return (signal/noise).item()
-    
-    def SNR_increase(self, raw, noise, prediction):
-        orig_SNR = self.compute_SNR(raw, noise)
-        denoised_SNR = self.compute_SNR(raw, prediction)
-        return denoised_SNR/orig_SNR
+
 
     def __init_model(self):
         if torch.cuda.is_available():
@@ -566,3 +555,20 @@ def loop_iterable(iterable):
 
 def calc_coeff(iter_num, high=1.0, low=0.0, alpha=10.0, max_iter=1000.0):
     return np.float(2.0 * (high - low) / (1.0 + np.exp(-alpha*iter_num / max_iter)) - (high - low) + low)
+
+
+# SNR helper:
+
+"""SNR was defined as dividing intensity of the highest peak by the standard 
+deviation of a manually selected noise region without signal"""
+
+def compute_SNR(raw, noisy_img): 
+    high_peak = torch.max(torch.abs(raw))
+    std =  torch.std(noisy_img - raw)
+    
+    return (high_peak/std).item()
+
+def SNR_increase(raw, noise, prediction):
+    orig_SNR = compute_SNR(raw, noise)
+    denoised_SNR = compute_SNR(raw, prediction)
+    return denoised_SNR/orig_SNR
