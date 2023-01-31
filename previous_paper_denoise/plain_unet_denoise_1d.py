@@ -52,25 +52,25 @@ specs = ( [64, 128, 1024],
         # 512, 1024, 1024, 1024,
         [ 512, 256, 64])
     
-model = UNet_Single(1,1,False,1,channel_specs= None)
-# model = UNet(1,1,False, oneD=True)
+# model = UNet_Single(1,1,False,1,channel_specs= None)
+model = UNet(1,1,False, oneD=True)
 model = torch.nn.DataParallel(model).to("cuda")
 
 # config
-saved_dir = "/root/autoencoder_denoiser/previous_paper_denoise/oneD_lowerLR"
+saved_dir = "/root/autoencoder_denoiser/previous_paper_denoise/oneD_orig_unet_small_batch"
 os.makedirs(saved_dir, exist_ok=True)
 log_file = open(saved_dir+"/log.txt", "w")
 
 curr_epoch = 0
 
 epoch = 200
-lr = 0.00001
-lr_step = 5
+lr = 0.001
+lr_step = 10
 lr_gamma = 0.01
 betas = (0.7, 0.999)
 batch=4
 
-optimizer = torch.optim.Adam(model.parameters(), betas= betas ,lr = lr) 
+optimizer = torch.optim.Adam(model.parameters(), lr = lr, betas=betas) 
 # optimizer = torch.optim.SGD(model.parameters(),momentum=0 ,lr = lr, weight_decay=0.01) 
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, lr_step, gamma=lr_gamma)
 criterion = torch.nn.MSELoss()
@@ -93,7 +93,7 @@ writer = SummaryWriter(log_dir=saved_dir)
 curr_iter = 0
 
 
-def one_step(mode='train', show_idx = 0):
+def one_step(mode='train', show_idx = [0,1,2]):
         if mode=='train':
             model.train()
             loader = train_loader
@@ -121,13 +121,14 @@ def one_step(mode='train', show_idx = 0):
             raw, noise = data
             raw, noise = raw.cuda().float(), noise.cuda().float()
             
-            # noise = torch.unsqueeze( noise,1)
-            # raw = torch.unsqueeze(raw, 1)
+            noise = torch.unsqueeze( noise,1)
+            raw = torch.unsqueeze(raw, 1)
             # print("noise.shape: ",noise.shape)
             prediction = model.forward(noise).double()
+            # raw, noise, prediction = raw.squeeze_(1), noise.squeeze_(1), prediction.squeeze_(1)
             # print(prediction)
             prediction = torch.where(prediction>0.0, prediction, 0.0)
-            prediction /= torch.unsqueeze(torch.max(prediction, 1)[0], 1)
+            prediction /= torch.unsqueeze(torch.max(prediction, 2)[0], 1)
             prediction = prediction.float()
             # print("predcition.shape: ",noise.shape)
             loss = criterion(prediction,raw )
@@ -139,27 +140,27 @@ def one_step(mode='train', show_idx = 0):
                 optimizer.step()
             model.eval()
             with torch.no_grad():
-                if iter == show_idx:
+                if iter in show_idx:
                     plt.clf()
                     ax = plt.subplot(3, 1, 1)
                     # plt.tight_layout()
                     ax.set_title('orig')
                     # ax.axis('off')
-                    plt.plot(raw[0].cpu())
+                    plt.plot(raw[0,0].cpu())
 
                     ax = plt.subplot(3, 1, 2)
                     # plt.tight_layout()
                     ax.set_title('noise')
                     # ax.axis('off')
-                    plt.plot(noise[0].cpu())
+                    plt.plot(noise[0,0].cpu())
                     
                     ax = plt.subplot(3, 1, 3)
                     # plt.tight_layout()
                     ax.set_title('predicted')
                     # ax.axis('off')
-                    plt.plot(prediction[0].detach().cpu())
+                    plt.plot(prediction[0,0].detach().cpu())
 
-                    plt.savefig(os.path.join(saved_dir, f"epoch_{curr_epoch}_{mode}.png"))
+                    plt.savefig(os.path.join(saved_dir, f"epoch_{curr_epoch}_{mode}_{iter}.png"))
 
             
                 for i in range(len(raw)):
@@ -196,7 +197,7 @@ for i in (range(epoch)):  # loop over the dataset multiple times
             
             train_loss, train_msg = one_step("train")
             with torch.no_grad():
-                val_loss, val_msg = one_step("val", show_idx=1)
+                val_loss, val_msg = one_step("val")
                 if best_val_loss >= val_loss:
                     best_val_loss = val_loss
                     early_stop = 0

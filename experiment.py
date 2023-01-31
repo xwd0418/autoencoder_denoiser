@@ -581,6 +581,14 @@ class Metric():
         self.wsnr_denoised += denoised_wSNR
         self.wsnr_inc  += wSNR_inc
         
+    def write(self, writer, mode, curr_iter):
+        writer.add_scalar(f'{mode}/SNR_orig', self.snr_orig, curr_iter) 
+        writer.add_scalar(f'{mode}/SNR_denoised', self.snr_denoised, curr_iter) 
+        writer.add_scalar(f'{mode}/SNR_inc', self.snr_inc, curr_iter) 
+        writer.add_scalar(f'{mode}/wSNR_orig', self.wsnr_orig, curr_iter) 
+        writer.add_scalar(f'{mode}/wSNR_denoised', self.wsnr_denoised, curr_iter) 
+        writer.add_scalar(f'{mode}/wSNR_inc', self.wsnr_inc, curr_iter) 
+        
     def avg(self, total_num):
         self.snr_orig  /= total_num
         self.snr_denoised /= total_num
@@ -608,7 +616,7 @@ def SNR_increase(raw, noise, prediction):
 
 """ dividing intensity of the weakest peak by the manually selected noise region used and named wSNR"""
 def compute_wSNR(raw, noisy_img): 
-    low_peak = torch.min(raw[torch.nonzero(raw)])
+    low_peak = torch.min(raw[torch.where(raw>0.05)])
     std =  torch.std(noisy_img - raw)
     return (low_peak/std).item()
 
@@ -632,3 +640,20 @@ def compute_metrics(raw, noise, prediction):
     
 
     
+# def compute_metrics(raw, noise, prediction):
+#     noise_position= torch.where(raw<0.05)
+#     signal_position= torch.where(raw>=0.05)
+    
+    
+#     orig_SNR = torch.max(noise)/torch.std(noise[noise_position])
+#     denoised_SNR = torch.max(prediction)/torch.std(prediction[noise_position])
+#     print("prediction's noise:",torch.max(prediction[noise_position]) )
+#     print("torch.std(prediction[noise_position])", torch.std(prediction[noise_position]))
+#     SNR_inc = denoised_SNR/orig_SNR
+    
+#     orig_wSNR = torch.min(noise[signal_position])/torch.std(noise[noise_position])
+#     denoised_wSNR = torch.min(prediction[signal_position])/torch.std(prediction[noise_position])
+#     wSNR_inc = denoised_wSNR/orig_wSNR
+    
+#     # print(orig_SNR, denoised_SNR, orig_wSNR, denoised_wSNR, SNR_inc, wSNR_inc)
+#     return orig_SNR.item(), denoised_SNR.item(), orig_wSNR.item(), denoised_wSNR.item(), SNR_inc.item(), wSNR_inc.item()
