@@ -36,7 +36,7 @@ def get_model(config):
         return Adv_Unet(1,1,config['model']['bilinear'], config['model']['features'])
     elif model_type == "UNet_Single":
         print ("model: Unet config as the paper indicated)")
-        return UNet_Single(1,1,config['model']['bilinear'],config['model']['dim'] )
+        return UNet_Single(1,1,config['model']['bilinear'],config['model']['dim'], channel_specs=[[64, 128, 256, 512,],[256, 128, 64, 64]])
     else : raise Exception("what is the model to use???")
 
 
@@ -106,6 +106,7 @@ class UNet(nn.Module):
         logits = self.outc(x)
         if feature:
             return logits, x5
+        # print(logits)
         return logits
     
 class UNet_Single(nn.Module):
@@ -140,9 +141,9 @@ class UNet_Single(nn.Module):
             down_channel = channel_specs[0]
             up_channel = channel_specs[1]
             
-        self.intro_conv = nn.Conv1d(n_channels_in, 64, kernel_size=3, padding=1)
+        # self.intro_conv = nn.Conv1d(n_channels_in, 64, kernel_size=3, padding=1)
         encode_layers = []
-        encode_layers.append (SingleConv(64, 64, dim=dim))
+        encode_layers.append (SingleConv(1, 64, dim=dim))
         for i in range(len(down_channel)-1):
             # print("channels", down_channel[i], down_channel[i+1])
             encode_layers.append(SingleDown(down_channel[i], down_channel[i+1], dim))
@@ -154,7 +155,7 @@ class UNet_Single(nn.Module):
         for i in range(len(down_channel)-1):
             decode_layers.append(SingleUp(up_channel[i]+down_channel[-(i+2)], up_channel[i+1] ,bilinear, dim))
 
-        self.outc = SingleOutConv(128, n_channels_out,dim)
+        self.outc = SingleOutConv(64+1, n_channels_out,dim)
         
         self.encode = nn.Sequential(*encode_layers)
         self.decode = nn.Sequential(*decode_layers)
@@ -165,7 +166,7 @@ class UNet_Single(nn.Module):
             # print('orig shape', shape)
             x = x.view(-1, 1, shape[-1])
         
-        x=self.intro_conv(x)
+        # x=self.intro_conv(x)
         # print("after into ", x.shape)
         encode_results=[x]
         for layer in self.encode:

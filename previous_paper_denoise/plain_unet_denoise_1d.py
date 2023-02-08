@@ -1,7 +1,7 @@
 # make dataset
 import os,sys
 from glob import glob
-import cv2
+import cv2, shutil
 import torch, copy
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
@@ -16,6 +16,10 @@ from model_factory import *
 from experiment import Metric, compute_metrics
 from torch.utils.tensorboard import SummaryWriter
 
+lucky_num = 1527
+random.seed(lucky_num)
+np.random.seed(lucky_num)
+torch.manual_seed(lucky_num)
 
 class One_D_Dataset(Dataset):
     def __init__(self, split="training", config=None):
@@ -57,9 +61,14 @@ model = UNet(1,1,False, oneD=True)
 model = torch.nn.DataParallel(model).to("cuda")
 
 # config
-saved_dir = "/root/autoencoder_denoiser/previous_paper_denoise/oneD_orig_unet_small_batch"
+saved_dir = "/root/autoencoder_denoiser/previous_paper_denoise/exp_results/orig_config_orig_unet_loss_after_norm"
+try :
+    shutil.rmtree(saved_dir)
+except:
+    pass
 os.makedirs(saved_dir, exist_ok=True)
 log_file = open(saved_dir+"/log.txt", "w")
+
 
 curr_epoch = 0
 
@@ -113,10 +122,12 @@ def one_step(mode='train', show_idx = [0,1,2]):
         losses = 0
         # temp
         # Iterate over the data, implement the training function
+        metric.reset()
         for iter, data in enumerate(tqdm(loader)):
-            metric.reset()
-            global curr_iter
-            curr_iter+=1
+            if mode == 'train':  
+                metric.reset()
+                global curr_iter
+                curr_iter+=1
             optimizer.zero_grad()
             raw, noise = data
             raw, noise = raw.cuda().float(), noise.cuda().float()
@@ -124,13 +135,22 @@ def one_step(mode='train', show_idx = [0,1,2]):
             noise = torch.unsqueeze( noise,1)
             raw = torch.unsqueeze(raw, 1)
             # print("noise.shape: ",noise.shape)
-            prediction = model.forward(noise).double()
+            prediction = model.forward(noise)
+            
+            
+            """normalizing the prediction result"""
+            prediction = prediction.double()
+            # print("prediction", prediction)
             # raw, noise, prediction = raw.squeeze_(1), noise.squeeze_(1), prediction.squeeze_(1)
             # print(prediction)
             prediction = torch.where(prediction>0.0, prediction, 0.0)
+            # print("prediction max",  torch.max(prediction))
             prediction /= torch.unsqueeze(torch.max(prediction, 2)[0], 1)
             prediction = prediction.float()
+            # print("prediction normalized", prediction)
+
             # print("predcition.shape: ",noise.shape)
+            
             loss = criterion(prediction,raw )
             
             
@@ -168,24 +188,18 @@ def one_step(mode='train', show_idx = [0,1,2]):
                     # a = torch.rand(10)
                     # metric.update(a,a,a)
                   
-            writer.add_scalar(f'{mode}/loss', loss, curr_iter)        
-            losses += loss.item()
-            metric.avg(batch)
-            metric.write(writer, mode, curr_iter)
+            losses += loss.item() 
+            if mode == 'train':     
+                writer.add_scalar(f'{mode}/loss', loss, curr_iter)                   
+                metric.avg(batch)
+                metric.write(writer, mode, curr_iter)
+            else:
+                writer.add_scalar(f'{mode}/loss', loss/(iter+1), curr_iter)                   
+                metric.avg(batch*(iter+1))
+                metric.write(writer, mode, curr_iter)
             
         losses /= (iter+1)
-        
-        
-        # msg = f"{mode} SNR_orig is:  {round(metric.snr_orig,3)}, \
-        #         {mode} SNR_denoised is:  {round(metric.snr_denoised,3)}, \
-        #         {mode} SNR_increase is:  {round(metric.snr_inc,3)}, \
-        #         {mode} wSNR_orig is:  {round(metric.wsnr_orig,3)}, \
-        #         {mode} wSNR_denoised is:  {round(metric.wsnr_denoised,3)}, \
-        #         {mode} wSNR_increase is:  {round(metric.wsnr_inc,3)}, \
-        #         {mode} loss is  {round(losses,5)} \n"
 
-
-        
         return losses , None
     
     

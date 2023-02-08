@@ -15,7 +15,7 @@
       "data_augment": 5
     },
     "experiment": {
-      "num_epochs": 51,
+      "num_epochs": 1,
       "learning_rate": 5e-7,
       "loss_func":"MSE",
       "lr_step": 0,

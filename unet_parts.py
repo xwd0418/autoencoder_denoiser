@@ -159,8 +159,8 @@ class SingleUp(nn.Module):
             x1 = self.batchNorm(x1)
             x1 = self.act(x1) 
             # print('after up ', x1.shape)
-            # diff = x2.size()[2] - x1.size()[2]
-            # x1 = F.pad(x1, [diff // 2, diff - diff // 2])
+            diff = x2.size()[2] - x1.size()[2]
+            x1 = F.pad(x1, [diff // 2, diff - diff // 2])
             x = torch.cat([x2, x1], dim=1)
             # print('padded shape ', x1.shape)
             # print('x2 shape ', x2.shape)
