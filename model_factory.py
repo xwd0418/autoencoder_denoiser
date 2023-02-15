@@ -33,7 +33,7 @@ def get_model(config):
         return UNet(2,1,config['model']['bilinear'])
     elif model_type == "Adv_UNet":
         print ("model: Adv_Unet")
-        return Adv_Unet(1,1,config['model']['bilinear'], config['model']['features'])
+        return Adv_Unet(1,1,config['model']['bilinear'], config['model']['adv_features'], CDAN=config['model']['CDAN'])
     elif model_type == "UNet_Single":
         print ("model: Unet config as the paper indicated)")
         return UNet_Single(1,1,config['model']['bilinear'],config['model']['dim'], channel_specs=[[64, 128, 256, 512,],[256, 128, 64, 64]])
@@ -247,10 +247,11 @@ class AdversarialNetwork(nn.Module):
 
 
 class Adv_Unet(nn.Module):
-    def __init__(self, n_channels_in, n_channels_out, bilinear, feature_nums=None):
+    def __init__(self, n_channels_in, n_channels_out, bilinear, feature_nums=None, CDAN=False):
         super(Adv_Unet,self).__init__()
         self.Unet = UNet(n_channels_in,n_channels_out , bilinear)
         self.discriminator = AdversarialNetwork(512, feature_nums)
+        self.CDAN = CDAN
     
     def forward(self, x, y=None, coeff=None, plain=True):
         if plain:
@@ -259,6 +260,11 @@ class Adv_Unet(nn.Module):
         combined_results, features = self.Unet(combined, feature=True)
         # features.register_hook(grl_hook(coeff))
         features = nn.AdaptiveAvgPool2d(1)(features).squeeze(2).squeeze(2)
+        
+        if self.CDAN:
+            softmax_output = torch.softmax(combined_results, dim=1)
+            op_out = torch.bmm(softmax_output.detach().unsqueeze(2), features.unsqueeze(1))
+            y = self.discriminator(op_out.view(-1, softmax_output.size(1) * features.size(1)), coeff)
         # print("feature shape",features.shape)
 
         y = self.discriminator(features, coeff)

@@ -89,7 +89,9 @@ class Experiment(object):
         print("model finish moving")
 
         print(" choosing loss function and optimizer")
-        if  config["experiment"]["loss_func"] == "MSE":
+        if self.config['model'].get("CDAN+e") == "True":
+            pass
+        elif  config["experiment"]["loss_func"] == "MSE":
             self.__criterion = torch.nn.MSELoss()
         elif config["experiment"]["loss_func"] == "CrossEntropy":
             self.__criterion = torch.nn.CrossEntropyLoss() # edited
@@ -147,6 +149,8 @@ class Experiment(object):
                 print('Reading last expriment failed, removing folder')
                 shutil.rmtree(self.__experiment_dir)
                 os.makedirs(self.__experiment_dir)
+                os.makedirs(self._val_samples_path, exist_ok=True)
+                os.makedirs(self._test_samples_path, exist_ok=True)
         else:
             os.makedirs(self.__experiment_dir)
 
@@ -276,7 +280,7 @@ class Experiment(object):
                     ax.axis('off')
                     plt.imshow(prediction_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
-                    plt.savefig(os.path.join(self._val_samples_path, "epoch_{}_sample_images.png".format(str(self    .__current_epoch))))
+                    plt.savefig(os.path.join(self._val_samples_path, "epoch_{}_sample_images.png".format(str(self.__current_epoch))))
                     displayed = True
                     plt.clf()
                     
@@ -470,7 +474,8 @@ class Metric():
     def update(self, raw, noise, prediction):
         #  , orig_wSNR, denoised_wSNR,wSNR_inc
         orig_SNR, denoised_SNR,  SNR_inc = \
-                    compute_metrics(torch.squeeze(raw,0), torch.squeeze(noise,0),torch.squeeze(prediction,0), raw_noise_threadshold = 0, topk_k=3)
+                    compute_metrics(torch.squeeze(raw,0), torch.squeeze(noise,0),torch.squeeze(prediction,0))
+                    # compute_metrics(torch.squeeze(raw,0), torch.squeeze(noise,0),torch.squeeze(prediction,0), raw_noise_threadshold = 0, topk_k=3)
         self.snr_orig  += orig_SNR
         self.snr_denoised += denoised_SNR
         self.snr_inc += SNR_inc
@@ -500,7 +505,8 @@ class Metric():
 def compute_SNR(raw, noisy_img): 
     signal_position= torch.where(raw!=0)
     # noise_position= torch.where(raw==0)
-    prediction_error = torch.abs(raw-noisy_img)
+    prediction_error = torch.sum( torch.abs(raw-noisy_img))
+ 
     avg_signal = torch.sum(raw)/len(signal_position[0]) - prediction_error/torch.numel(raw)
     noise_std =  torch.std(noisy_img - raw)
     return (avg_signal/noise_std).item()

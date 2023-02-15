@@ -39,7 +39,7 @@ class HSQCDataset(Dataset):
         file_index = i//self.augment
 
         raw_sample = torch.load(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
-        print(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
+        # print(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         raw_sample = np.array(raw_sample, dtype="float32")
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
