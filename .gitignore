@@ -13,3 +13,4 @@ previous_paper_denoise/gen_dataset
 previous_paper_denoise/log*
 results_to_compare*
 previous_paper_denoise/exp_results/
+results_new_SNR*
