@@ -3,7 +3,7 @@ import os, math
 from traceback import print_tb
 # from autoencoder_denoiser.dataloader_deprecated import get_datasets, get_real_img_dataset
 from hsqc_dataset import  get_datasets, get_real_img_dataset
-from model_factory import get_model
+from model_factory import get_model , CDANLoss
 from weakref import ref
 import matplotlib.pyplot as plt
 import numpy as np
@@ -89,9 +89,9 @@ class Experiment(object):
         print("model finish moving")
 
         print(" choosing loss function and optimizer")
-        if self.config['model'].get("CDAN+e") == "True":
-            pass
-        elif  config["experiment"]["loss_func"] == "MSE":
+        if self.config['model']["model_type"] == "Adv_UNet":
+            self.__adv_criterion = CDANLoss(use_entropy=self.config['model']["use_entropy"])
+        if  config["experiment"]["loss_func"] == "MSE":
             self.__criterion = torch.nn.MSELoss()
         elif config["experiment"]["loss_func"] == "CrossEntropy":
             self.__criterion = torch.nn.CrossEntropyLoss() # edited
@@ -192,9 +192,14 @@ class Experiment(object):
             # print ("noise shape",noise.shape)        
             
             if self.config['model']['model_type'] == "Adv_UNet":
-                prediction, domain_prediction = self.__model.forward(noise, real_img, 
-                                                                    calc_coeff(iter+self.__epochs*len(self.__train_loader)),
+                adv_coeff = calc_coeff(iter+self.__epochs*len(self.__train_loader))
+                prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img, 
+                                                                    adv_coeff,
                                                                     plain=False)
+            # elif self.config['model']['model_type'] == "Adv_UNet_CDAN":
+            #     prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img, 
+            #                                                         calc_coeff(iter+self.__epochs*len(self.__train_loader)),
+            #                                                         plain=False)
             else:    
                 prediction = self.__model.forward(noise)
             # prediction = prediction.type(torch.float32)
@@ -207,7 +212,9 @@ class Experiment(object):
             
             if self.config['model']['model_type'] == "Adv_UNet":
                 dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
-                adv_loss = torch.nn.BCELoss()(domain_prediction.squeeze(1), dc_target)
+                # adv_loss = torch.nn.BCEWithLogitsLoss()(domain_prediction.squeeze(1), dc_target)
+                adv_loss = self.__adv_criterion(ad_out=domain_prediction, softmax_output=softmax_output, coeff= adv_coeff,
+                                                dc_target = dc_target, batch_size=len(domain_prediction))
                 loss = loss + adv_loss
             prediction = torch.clip(prediction,0,1)
             with torch.no_grad():

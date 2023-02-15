@@ -261,15 +261,20 @@ class Adv_Unet(nn.Module):
         # features.register_hook(grl_hook(coeff))
         features = nn.AdaptiveAvgPool2d(1)(features).squeeze(2).squeeze(2)
         
-        if self.CDAN:
+        if self.CDAN == False: # DANN
+            y = self.discriminator(features, coeff)
+            return combined_results[:x.shape[0]], y, None  # only source set denoised_img and all domain predictions
+        
+        else: # CDANN    
             softmax_output = torch.softmax(combined_results, dim=1)
             op_out = torch.bmm(softmax_output.detach().unsqueeze(2), features.unsqueeze(1))
             y = self.discriminator(op_out.view(-1, softmax_output.size(1) * features.size(1)), coeff)
+            return combined_results[:x.shape[0]], y, softmax_output
+        
         # print("feature shape",features.shape)
 
-        y = self.discriminator(features, coeff)
-        y = nn.Sigmoid()(y)
-        return combined_results[:x.shape[0]], y  # only source set denoised_img and all domain predictions
+        # y = nn.Sigmoid()(y)  
+        """not using sigmoid as we use BCEwithLogitLoss"""
 
 def grl_hook(coeff):
     def fun1(grad):
@@ -389,4 +394,59 @@ class Filter():
 
 
     
- 
+class CDANLoss(nn.Module):
+    ''' Ref: https://github.com/thuml/CDAN/blob/master/pytorch/loss.py
+    '''
+
+    def __init__(self, use_entropy=True, coeff=1):
+        super(CDANLoss, self).__init__()
+        self.use_entropy = use_entropy
+        self.criterion = nn.BCEWithLogitsLoss(reduction='none')
+        self.coeff = coeff
+        self.entropy_loss = EntropyLoss(coeff=1., reduction='none')
+
+    def forward(self, ad_out, softmax_output=None, coeff=1.0, dc_target=None, batch_size=None, training=True):
+        
+        if dc_target == None:
+           dc_target = torch.cat((torch.ones(batch_size), torch.zeros(ad_out.size(0)-batch_size)), 0).float().to(ad_out.device)
+        loss = self.criterion(ad_out.view(-1), dc_target.view(-1))
+        # after_sig = nn.Sigmoid()(ad_out).squeeze()
+        # loss = nn.BCELoss(reduction='none')(after_sig, dc_target)
+        # print("my computed daloss is ",loss)
+        if self.use_entropy:
+            entropy = self.entropy_loss(softmax_output)
+            if training:
+                entropy.register_hook(grl_hook(coeff))  # changed this to only hook sign
+            entropy = 1.0 + torch.exp(-entropy)
+            source_mask = torch.ones_like(entropy)
+            source_mask[batch_size:] = 0
+            source_weight = entropy * source_mask
+            target_mask = torch.ones_like(entropy)
+            target_mask[:batch_size] = 0
+            target_weight = entropy * target_mask
+            weight = source_weight / torch.sum(source_weight).detach().item() + \
+                     target_weight / torch.sum(target_weight).detach().item()
+            # if training:
+            #     weight.register_hook(grl_hook(1))  # changed this to only hook sign
+            return self.coeff*torch.sum(weight * loss) / torch.sum(weight).detach().item()
+        else:
+            return self.coeff*torch.mean(loss.squeeze())
+
+
+class EntropyLoss(nn.Module):
+    ''' Ref: https://github.com/thuml/CDAN/blob/master/pytorch/loss.py
+    '''
+
+    def __init__(self, coeff=1., reduction='mean'):
+        super().__init__()
+        self.coeff = coeff
+        self.reduction = reduction
+
+    def forward(self, input):
+
+        epsilon = 1e-5
+        entropy = -input * torch.log(input + epsilon)
+        entropy = torch.sum(entropy, dim=1)
+        if self.reduction == 'none':
+            return entropy
+        return self.coeff * entropy.mean()
