@@ -33,7 +33,8 @@ def get_model(config):
         return UNet(2,1,config['model']['bilinear'])
     elif model_type == "Adv_UNet":
         print ("model: Adv_Unet")
-        return Adv_Unet(1,1,config['model']['bilinear'], config['model']['adv_features'], CDAN=config['model']['CDAN'])
+        softmaxed_output_size = config['model']['output_img_pooling_size'] if config['model']['CDAN'] else 1 
+        return Adv_Unet(1,1,config['model']['bilinear'], softmaxed_output_size, config['model']['adv_features'], CDAN=config['model']['CDAN'])
     elif model_type == "UNet_Single":
         print ("model: Unet config as the paper indicated)")
         return UNet_Single(1,1,config['model']['bilinear'],config['model']['dim'], channel_specs=[[64, 128, 256, 512,],[256, 128, 64, 64]])
@@ -247,11 +248,13 @@ class AdversarialNetwork(nn.Module):
 
 
 class Adv_Unet(nn.Module):
-    def __init__(self, n_channels_in, n_channels_out, bilinear, feature_nums=None, CDAN=False):
+    def __init__(self, n_channels_in, n_channels_out, bilinear, pooling_size, feature_out_size=None, CDAN=False):
         super(Adv_Unet,self).__init__()
         self.Unet = UNet(n_channels_in,n_channels_out , bilinear)
-        self.discriminator = AdversarialNetwork(512, feature_nums)
+        self.discriminator = AdversarialNetwork(512*(pooling_size**2), feature_out_size) 
+        #magic num 512c is because of the Unet architecture
         self.CDAN = CDAN
+        self.pooling_size = pooling_size
     
     def forward(self, x, y=None, coeff=None, plain=True):
         if plain:
@@ -266,7 +269,11 @@ class Adv_Unet(nn.Module):
             return combined_results[:x.shape[0]], y, None  # only source set denoised_img and all domain predictions
         
         else: # CDANN    
-            softmax_output = torch.softmax(combined_results, dim=1)
+            pooled_results = nn.AdaptiveAvgPool2d(self.pooling_size)(combined_results)
+            pooled_results = pooled_results.view(pooled_results.shape[0], -1)
+            softmax_output = torch.softmax(pooled_results, dim=1) 
+            # using avg_pooling to reduce dimension
+            # softmax_output = softmax_output.view(softmax_output.shape[0], -1)
             op_out = torch.bmm(softmax_output.detach().unsqueeze(2), features.unsqueeze(1))
             y = self.discriminator(op_out.view(-1, softmax_output.size(1) * features.size(1)), coeff)
             return combined_results[:x.shape[0]], y, softmax_output
@@ -405,8 +412,8 @@ class CDANLoss(nn.Module):
         self.coeff = coeff
         self.entropy_loss = EntropyLoss(coeff=1., reduction='none')
 
-    def forward(self, ad_out, softmax_output=None, coeff=1.0, dc_target=None, batch_size=None, training=True):
-        
+    def forward(self, ad_out, softmax_output=None, coeff=1.0, dc_target=None, training=True):
+        batch_size = ad_out.shape[0]//2
         if dc_target == None:
            dc_target = torch.cat((torch.ones(batch_size), torch.zeros(ad_out.size(0)-batch_size)), 0).float().to(ad_out.device)
         loss = self.criterion(ad_out.view(-1), dc_target.view(-1))

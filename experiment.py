@@ -17,7 +17,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 
-ROOT_STATS_DIR = "./results_new_SNR"
+# ROOT_STATS_DIR = "./results_new_SNR"
+ROOT_STATS_DIR = "./results_debug"
 class Experiment(object):
     def __init__(self, name):
         f = open('/root/autoencoder_denoiser/configs/'+ name + '.json')
@@ -186,16 +187,16 @@ class Experiment(object):
             self.curr_iter += 1 
             raw, noise = self.__move_to_cuda(data)
             if self.config['model']['model_type'] == "Adv_UNet":
-                real_img = next(self.__batch_iterator)[0].unsqueeze(1)
-                real_img = real_img.float().to(self.device)
+                real_img = None
+                
+                # real_img = next(self.__batch_iterator)[0].unsqueeze(1)
+                # real_img = real_img.float().to(self.device)
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
             
             if self.config['model']['model_type'] == "Adv_UNet":
-                adv_coeff = calc_coeff(iter+self.__epochs*len(self.__train_loader))
-                prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img, 
-                                                                    adv_coeff,
-                                                                    plain=False)
+                adv_coeff = calc_coeff(self.curr_iter)
+                prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img,  adv_coeff, plain=False)
             # elif self.config['model']['model_type'] == "Adv_UNet_CDAN":
             #     prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img, 
             #                                                         calc_coeff(iter+self.__epochs*len(self.__train_loader)),
@@ -209,13 +210,19 @@ class Experiment(object):
                 ground_truth = raw[:,0,:,:]
                 
             loss = self.__criterion(prediction,ground_truth )
+            # print("loss is: ", loss)
             
             if self.config['model']['model_type'] == "Adv_UNet":
-                dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
-                # adv_loss = torch.nn.BCEWithLogitsLoss()(domain_prediction.squeeze(1), dc_target)
-                adv_loss = self.__adv_criterion(ad_out=domain_prediction, softmax_output=softmax_output, coeff= adv_coeff,
-                                                dc_target = dc_target, batch_size=len(domain_prediction))
-                loss = loss + adv_loss
+                # break
+                # dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
+                # # adv_loss = torch.nn.BCEWithLogitsLoss()(domain_prediction.squeeze(1), dc_target)
+                # adv_loss = self.__adv_criterion(ad_out=domain_prediction, softmax_output=softmax_output, coeff= adv_coeff,
+                #                                 dc_target = dc_target)
+                # loss = loss + adv_loss
+                # print("adv_loss is ",adv_loss)
+                # print("coeff is ", adv_coeff)
+                # print('loss is: ', loss)
+                pass
             prediction = torch.clip(prediction,0,1)
             with torch.no_grad():
                 for i in range(len(raw)):
@@ -250,8 +257,9 @@ class Experiment(object):
                 if self.config["experiment"]["loss_func"] == "CrossEntropy":
                     ground_truth = raw[:,0,:,:]
                 loss=self.__criterion(prediction,ground_truth )
-                val_loss+=loss.item() 
                 
+                val_loss+=loss.item() 
+                # add adv loss !!!
                 prediction = torch.clip(prediction,-1,1)
                 
                 

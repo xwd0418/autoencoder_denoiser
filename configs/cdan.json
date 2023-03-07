@@ -25,7 +25,10 @@
     "model": {
         "model_type": "Adv_UNet",
         "bilinear": true,
-        "features":1024
+        "adv_features":1024,
+        "output_img_pooling_size": 16,
+        "CDAN": true,
+        "use_entropy": false
       }
   }
   

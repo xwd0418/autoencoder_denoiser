@@ -6,14 +6,15 @@
     "configurations": [
 
         {
-            "name": "Python: Current File",
+            "name": "Python: denoise debug",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "/root/autoencoder_denoiser/main.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "adv_test"
+                "cdan_e"
+                // "baseline_adv"
             ]
         }
     ]
