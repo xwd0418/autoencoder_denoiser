@@ -187,10 +187,8 @@ class Experiment(object):
             self.curr_iter += 1 
             raw, noise = self.__move_to_cuda(data)
             if self.config['model']['model_type'] == "Adv_UNet":
-                real_img = None
-                
-                # real_img = next(self.__batch_iterator)[0].unsqueeze(1)
-                # real_img = real_img.float().to(self.device)
+                real_img = next(self.__batch_iterator)[0].unsqueeze(1)
+                real_img = real_img.float().to(self.device)
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
             
