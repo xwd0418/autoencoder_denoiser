@@ -17,8 +17,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 
-# ROOT_STATS_DIR = "./results_new_SNR"
-ROOT_STATS_DIR = "./results_debug"
+ROOT_STATS_DIR = "./results_new_SNR"
+# ROOT_STATS_DIR = "./results_debug"
 class Experiment(object):
     def __init__(self, name):
         f = open('/root/autoencoder_denoiser/configs/'+ name + '.json')
@@ -179,7 +179,6 @@ class Experiment(object):
 
     def __train(self):
         self.__model.train()
-        training_loss = 0
         # temp
         # Iterate over the data, implement the training function
         for iter, data in enumerate(tqdm(self.__train_loader)):
@@ -195,10 +194,7 @@ class Experiment(object):
             if self.config['model']['model_type'] == "Adv_UNet":
                 adv_coeff = calc_coeff(self.curr_iter)
                 prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img,  adv_coeff, plain=False)
-            # elif self.config['model']['model_type'] == "Adv_UNet_CDAN":
-            #     prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img, 
-            #                                                         calc_coeff(iter+self.__epochs*len(self.__train_loader)),
-            #                                                         plain=False)
+
             else:    
                 prediction = self.__model.forward(noise)
             # prediction = prediction.type(torch.float32)
@@ -208,17 +204,21 @@ class Experiment(object):
                 ground_truth = raw[:,0,:,:]
                 
             loss = self.__criterion(prediction,ground_truth )
+            
             # print("loss is: ", loss)
             
             if self.config['model']['model_type'] == "Adv_UNet":
                 # break
-                # dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
-                # # adv_loss = torch.nn.BCEWithLogitsLoss()(domain_prediction.squeeze(1), dc_target)
-                # adv_loss = self.__adv_criterion(ad_out=domain_prediction, softmax_output=softmax_output, coeff= adv_coeff,
-                #                                 dc_target = dc_target)
-                # loss = loss + adv_loss
+                dc_target = torch.cat((torch.ones(noise.shape[0]), torch.zeros(real_img.shape[0])), 0).float().to(self.device)
+                # adv_loss = torch.nn.BCEWithLogitsLoss()(domain_prediction.squeeze(1), dc_target)
+                adv_loss = self.__adv_criterion(ad_out=domain_prediction, softmax_output=softmax_output, coeff= adv_coeff,
+                                                dc_target = dc_target)
+                """Warning: if want to write adv_loss to tensorboard, 
+                do it at the CDAN_LOSS module since the loss here is multiplied by the coeff"""
+                # print('classify loss is: ', loss)
+                # loss = loss + 0.03*adv_loss
                 # print("adv_loss is ",adv_loss)
-                # print("coeff is ", adv_coeff)
+             
                 # print('loss is: ', loss)
                 pass
             prediction = torch.clip(prediction,0,1)

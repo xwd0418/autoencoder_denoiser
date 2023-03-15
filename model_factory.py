@@ -68,6 +68,7 @@ class JNet(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False, oneD=False):
+        torch.manual_seed(3)
         super(UNet, self).__init__()
         self.n_channels_in = n_channels_in
         self.n_channels_out = n_channels_out
@@ -405,11 +406,10 @@ class CDANLoss(nn.Module):
     ''' Ref: https://github.com/thuml/CDAN/blob/master/pytorch/loss.py
     '''
 
-    def __init__(self, use_entropy=True, coeff=1):
+    def __init__(self, use_entropy=True):
         super(CDANLoss, self).__init__()
         self.use_entropy = use_entropy
         self.criterion = nn.BCEWithLogitsLoss(reduction='none')
-        self.coeff = coeff
         self.entropy_loss = EntropyLoss(coeff=1., reduction='none')
 
     def forward(self, ad_out, softmax_output=None, coeff=1.0, dc_target=None, training=True):
@@ -435,9 +435,9 @@ class CDANLoss(nn.Module):
                      target_weight / torch.sum(target_weight).detach().item()
             # if training:
             #     weight.register_hook(grl_hook(1))  # changed this to only hook sign
-            return self.coeff*torch.sum(weight * loss) / torch.sum(weight).detach().item()
+            return coeff*torch.sum(weight * loss) / torch.sum(weight).detach().item()
         else:
-            return self.coeff*torch.mean(loss.squeeze())
+            return coeff*torch.mean(loss.squeeze())
 
 
 class EntropyLoss(nn.Module):

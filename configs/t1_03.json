@@ -1,7 +1,7 @@
 {
     "experiment_name": "noise1",
     "dataset": {
-      "shuffle": true,
+      "shuffle": false,
       "signal_upscale":1,
       "noise_type": "t1",
       "noise_factor": 0.35,
@@ -12,7 +12,8 @@
       "num_workers": 4,
       "streak_prob": 0.6,
       "cross_prob": 0.3,
-      "data_augment": 5
+      "data_augment": 5,
+      "real_img_dataset_name": "Byeol"
     },
     "experiment": {
       "num_epochs": 100,

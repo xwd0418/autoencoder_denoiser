@@ -1,21 +1,22 @@
 {
     "experiment_name": "noise1",
     "dataset": {
-      "shuffle": true,
-      "signal_upscale":2,
+      "shuffle": false,
+      "signal_upscale":1,
       "noise_type": "t1",
-      "noise_factor": 0.15,
+      "noise_factor": 0.35,
       "white_noise_rate":0.01,
       "pre-filtered": false,
-      "batch_size": 8,
+      "batch_size": 32,
       "tessellate": false,
       "num_workers": 4,
       "streak_prob": 0.6,
       "cross_prob": 0.3,
-      "data_augment": 5
+      "data_augment": 5,
+      "real_img_dataset_name": "Byeol"
     },
     "experiment": {
-      "num_epochs": 25,
+      "num_epochs": 100,
       "learning_rate": 5e-7,
       "loss_func":"MSE",
       "lr_step": 0,
@@ -23,8 +24,9 @@
       "lr_scheduler_type": "criterion"
     },
     "model": {
+        "loading_path":"/root/autoencoder_denoiser/results_new_SNR/t1_03/latest_model.pt",
         "model_type": "UNet",
         "bilinear": true
       }
-}
+  }
   

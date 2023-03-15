@@ -8,10 +8,18 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 from data_preprocess import triangle_tessellate , expand
+from PIL import Image
 
 
 class HSQCDataset(Dataset):
     def __init__(self, split="train", config=None):
+        
+        seed = 10086
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        
         self.dir = "/root/data/hyun_fp_data/hsqc_ms_pairs/"
         self.split = split
         self.config = config
@@ -36,6 +44,9 @@ class HSQCDataset(Dataset):
         return len(self.hsqc_files)*self.augment
 
     def __getitem__(self, i):
+        
+        
+        
         file_index = i//self.augment
 
         raw_sample = torch.load(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
@@ -64,6 +75,12 @@ class HSQCDataset(Dataset):
             noisy_sample = add_t1_noise(raw_sample, self.config)
             white_noise_rate=self.config['dataset'].get('white_noise_rate')
             if white_noise_rate is not None:
+                        
+                # seed = 10086
+                # np.random.seed(seed)
+                # random.seed(seed)
+                # torch.manual_seed(seed)
+                # torch.cuda.manual_seed_all(seed)
                 noisy_sample += self.config["dataset"]["noise_factor"] * np.random.uniform(low=-1.0, high=1.0, size=raw_sample.shape)
 
 
@@ -98,7 +115,7 @@ class HSQCDataset(Dataset):
         
         return raw_sample,noisy_sample
 
-class RealNoiseDataset(Dataset):
+class RealNoiseDataset_Chen(Dataset):
     def __init__(self, config):
         self.imgs = []
         orig_img_dir = "/root/autoencoder_denoiser/dataset/real_noise"
@@ -118,8 +135,49 @@ class RealNoiseDataset(Dataset):
         
     def __getitem__(self, index):
         return self.imgs[index]
+    
+class RealNoiseDataset_Byeol(Dataset):
+    def __init__(self, config) -> None:
+        super().__init__() 
+        self.imgs = []
+        img_dir = "/root/autoencoder_denoiser/dataset/real_img_referral_for_testing"
+        clean_dir = os.path.join(img_dir, "real_hsqc_clean")
+        noisy_dir = os.path.join(img_dir, "real_hsqc_noisy")
+        
+        for img_path in glob(noisy_dir+"/*"):
+            '''noise'''
+            img = Image.open(img_path)
+            img = np.array(img)
+            plus = 1-img[:,:, 0]/255 # I will assume this is plus but not sure
+            minus = 1-img[:,:, 2]/255
+            # print(plus.shape)
+            img_result = plus-minus
+            resized_input = cv2.resize(img_result.astype("float32"), (120, 180))
+            '''ground truth'''
+            ground_path = img_path.replace("real_hsqc_noisy","real_hsqc_clean").replace("_noisy","_original")
+            ground_path = ground_path[:-5] + '1.png'
+            if ground_path[-6].isdigit():
+                # print(ground_path)
+                ground_path = ground_path[:-6]+ground_path[-5:]
+            # print(gound_path)
+            img = Image.open(ground_path)
+            img = np.array(img)
+            plus_groud = 1-img[:,:, 0]/255 # I will assume this is plus but not sure
+            minus_groud = 1-img[:,:, 2]/255
+            ground_truth = plus_groud - minus_groud
+            ground_truth = cv2.resize(ground_truth.astype("float32"), (120, 180))
+            self.imgs.append((resized_input, ground_truth))
+
+    def  __len__(self):
+        return len(self.imgs)
+        
+    def __getitem__(self, index):
+        return self.imgs[index]
+            
 
 def get_datasets(config):
+    
+    
     shuffle=config["dataset"]['shuffle']
     batch = config["dataset"]['batch_size']
     train_loader = DataLoader(HSQCDataset("train", config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
@@ -130,9 +188,11 @@ def get_datasets(config):
 def get_real_img_dataset(config):
     batch = config["dataset"]['batch_size']
     shuffle=config["dataset"]['shuffle']
-    return DataLoader(RealNoiseDataset(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
-
-
+    if config['dataset']['real_img_dataset_name']=="Chen":
+        return DataLoader(RealNoiseDataset_Chen(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+    if config['dataset']['real_img_dataset_name']=="Byeol":
+        return DataLoader(RealNoiseDataset_Byeol(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+            
 
 
 """helper functioner to gerneate noise"""
