@@ -16,7 +16,7 @@
       "real_img_dataset_name": "Byeol"
     },
     "experiment": {
-      "num_epochs": 1,
+      "num_epochs": 5,
       "learning_rate": 5e-7,
       "loss_func":"MSE",
       "lr_step": 0,

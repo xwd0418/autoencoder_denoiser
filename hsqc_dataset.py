@@ -189,8 +189,10 @@ def get_real_img_dataset(config):
     batch = config["dataset"]['batch_size']
     shuffle=config["dataset"]['shuffle']
     if config['dataset']['real_img_dataset_name']=="Chen":
+        print("using Chen's real imgs")
         return DataLoader(RealNoiseDataset_Chen(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
     if config['dataset']['real_img_dataset_name']=="Byeol":
+        print("using Byeol's real imgs")
         return DataLoader(RealNoiseDataset_Byeol(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
             
 

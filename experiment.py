@@ -50,7 +50,7 @@ class Experiment(object):
         self.__train_loader, self.__val_loader, self.__test_loader = get_datasets(config)
         if config['model']['model_type'] == "Adv_UNet":
             self.__real_img_loader = get_real_img_dataset(config)
-            self.__batch_iterator = zip(loop_iterable(self.__real_img_loader))
+            self.__batch_iterator = loop_iterable(self.__real_img_loader)
 
         # Setup Experiment
         self.__epochs = config['experiment']['num_epochs']
@@ -120,6 +120,14 @@ class Experiment(object):
 
         # Load Experiment Data if available
         self.__load_experiment()
+        
+        # finetune with real img
+        if self.config['model'].get("loading_path"):
+            print("loading previous model to finetune by real noisy data")
+            state_dict = torch.load(self.config['model'].get("loading_path"))
+            # self.__model.module.Unet = torch.nn.DataParallel(self.__model.module.Unet, device_ids=self.model.device)
+            self.__model.module.Unet.load_state_dict(state_dict)
+
 
     # Loads the experiment data if exists to resume training from last saved checkpoint.
     def __load_experiment(self):
@@ -186,7 +194,11 @@ class Experiment(object):
             self.curr_iter += 1 
             raw, noise = self.__move_to_cuda(data)
             if self.config['model']['model_type'] == "Adv_UNet":
-                real_img = next(self.__batch_iterator)[0].unsqueeze(1)
+                if self.config['dataset']['real_img_dataset_name']=="Chen":
+                    real_img = next(self.__batch_iterator).unsqueeze(1)
+                if self.config['dataset']['real_img_dataset_name']=="Byeol":
+                    real_img = next(self.__batch_iterator)[0].unsqueeze(1)
+                    
                 real_img = real_img.float().to(self.device)
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
@@ -421,19 +433,19 @@ class Experiment(object):
 
     def __save_model(self):
         root_model_path = os.path.join(self.__experiment_dir, 'latest_model.pt')
-        model_dict = self.__model.state_dict()
+        model_dict = self.__model.module.state_dict()
         state_dict = {'model': model_dict, 'optimizer': self.__optimizer.state_dict()}
         torch.save(state_dict, root_model_path)
 
     def __move_to_cuda(self, data):
         raw, noise = data
         if type(noise) is list:
-            raw= raw.cuda().float()
+            raw= raw.to(self.device).float()
             noisy_sample, tessellated_noise = noise
-            noise = noisy_sample.cuda().float(),  tessellated_noise.cuda().float()
+            noise = noisy_sample.to(self.device).float(),  tessellated_noise.cuda().float()
         else:
             
-            raw, noise = raw.cuda().float(), noise.cuda().float()
+            raw, noise = raw.to(self.device).float(), noise.to(self.device).float()
         return raw,noise  
             
 
