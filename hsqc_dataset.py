@@ -1,11 +1,12 @@
 import os,sys
 from glob import glob
-import cv2
+import cv2, pickle
 import torch, copy
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
 import random
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 from data_preprocess import triangle_tessellate , expand
 from PIL import Image
@@ -20,7 +21,10 @@ class HSQCDataset(Dataset):
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         
-        self.dir = "/root/data/hyun_fp_data/hsqc_ms_pairs/"
+        if config['dataset']['cleaned']:
+            self.dir = "/root/data/SMILES_dataset/"
+        else:
+            self.dir = "/root/data/hyun_fp_data/hsqc_ms_pairs/"
         self.split = split
         self.config = config
         self.augment = config['dataset'].get("data_augment")
@@ -107,13 +111,18 @@ class HSQCDataset(Dataset):
             
             ### using low resolution of tessellation 
             if self.config['model']['model_type'] == "UNet_2": 
-                concat = np.concatenate((noisy_sample, tessellated_noise))                
+                concat = np.concatenate((noisy_sample, tessellated_noise))    
+                if self.config['dataset']['absolute']:
+                    raw_sample,concat = np.abs(raw_sample), np.abs(concat)            
                 return raw_sample, concat
             ### using Jnet 
             else:
+                if self.config['dataset']['absolute']:
+                    raw_sample, noisy_sample, tessellated_noise = np.abs(raw_sample), np.abs(noisy_sample), np.abs(tessellated_noise)
                 return raw_sample, (noisy_sample, tessellated_noise)
-        
-        return raw_sample,noisy_sample
+        if self.config['dataset']['absolute']:
+            raw_sample, noisy_sample = np.abs(raw_sample), np.abs(noisy_sample)
+        return raw_sample, noisy_sample
 
 class RealNoiseDataset_Chen(Dataset):
     def __init__(self, config):
@@ -139,34 +148,10 @@ class RealNoiseDataset_Chen(Dataset):
 class RealNoiseDataset_Byeol(Dataset):
     def __init__(self, config) -> None:
         super().__init__() 
-        self.imgs = []
-        img_dir = "/root/autoencoder_denoiser/dataset/real_img_referral_for_testing"
-        clean_dir = os.path.join(img_dir, "real_hsqc_clean")
-        noisy_dir = os.path.join(img_dir, "real_hsqc_noisy")
+        with open('/root/autoencoder_denoiser/dataset/imgs_as_array.pkl', 'rb') as f:
+             self.imgs =  pickle.load(f)
         
-        for img_path in glob(noisy_dir+"/*"):
-            '''noise'''
-            img = Image.open(img_path)
-            img = np.array(img)
-            plus = 1-img[:,:, 0]/255 # I will assume this is plus but not sure
-            minus = 1-img[:,:, 2]/255
-            # print(plus.shape)
-            img_result = plus-minus
-            resized_input = cv2.resize(img_result.astype("float32"), (120, 180))
-            '''ground truth'''
-            ground_path = img_path.replace("real_hsqc_noisy","real_hsqc_clean").replace("_noisy","_original")
-            ground_path = ground_path[:-5] + '1.png'
-            if ground_path[-6].isdigit():
-                # print(ground_path)
-                ground_path = ground_path[:-6]+ground_path[-5:]
-            # print(gound_path)
-            img = Image.open(ground_path)
-            img = np.array(img)
-            plus_groud = 1-img[:,:, 0]/255 # I will assume this is plus but not sure
-            minus_groud = 1-img[:,:, 2]/255
-            ground_truth = plus_groud - minus_groud
-            ground_truth = cv2.resize(ground_truth.astype("float32"), (120, 180))
-            self.imgs.append((resized_input, ground_truth))
+        
 
     def  __len__(self):
         return len(self.imgs)

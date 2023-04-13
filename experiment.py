@@ -17,7 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 
-ROOT_STATS_DIR = "./results_new_SNR"
+ROOT_STATS_DIR = "./results_4.13_solved_iterator_bug"
 # ROOT_STATS_DIR = "./results_debug"
 class Experiment(object):
     def __init__(self, name):
@@ -50,7 +50,7 @@ class Experiment(object):
         self.__train_loader, self.__val_loader, self.__test_loader = get_datasets(config)
         if config['model']['model_type'] == "Adv_UNet":
             self.__real_img_loader = get_real_img_dataset(config)
-            self.__batch_iterator = loop_iterable(self.__real_img_loader)
+            self.__batch_iterator = loop_iterable(self.__real_img_loader) 
 
         # Setup Experiment
         self.__epochs = config['experiment']['num_epochs']
@@ -126,7 +126,7 @@ class Experiment(object):
             print("loading previous model to finetune by real noisy data")
             state_dict = torch.load(self.config['model'].get("loading_path"))
             # self.__model.module.Unet = torch.nn.DataParallel(self.__model.module.Unet, device_ids=self.model.device)
-            self.__model.module.Unet.load_state_dict(state_dict)
+            self.__model.module.Unet.load_state_dict(state_dict['model'])
 
 
     # Loads the experiment data if exists to resume training from last saved checkpoint.
@@ -198,6 +198,9 @@ class Experiment(object):
                     real_img = next(self.__batch_iterator).unsqueeze(1)
                 if self.config['dataset']['real_img_dataset_name']=="Byeol":
                     real_img = next(self.__batch_iterator)[0].unsqueeze(1)
+                    if real_img.shape[0]==1:
+                        real_img = torch.cat((real_img, next(self.__batch_iterator)[0].unsqueeze(1)))
+
                     
                 real_img = real_img.float().to(self.device)
             self.__optimizer.zero_grad()
@@ -205,7 +208,7 @@ class Experiment(object):
             
             if self.config['model']['model_type'] == "Adv_UNet":
                 adv_coeff = calc_coeff(self.curr_iter)
-                prediction, domain_prediction, softmax_output = self.__model.forward(noise, real_img,  adv_coeff, plain=False)
+                prediction, domain_prediction, softmax_output = self.__model(x=noise, y=real_img,  coeff=adv_coeff, plain=False)
 
             else:    
                 prediction = self.__model.forward(noise)
@@ -255,61 +258,70 @@ class Experiment(object):
         self.__model.eval()
         
         val_loss = 0
-        with torch.no_grad():
-            self.__val_metric.reset()
-            for iter, data in enumerate(tqdm(self.__val_loader)):
-                raw, noise = self.__move_to_cuda(data)
-                prediction = self.__model.forward(noise)
-                
-                # find loss
-                # prediction = prediction.type(torch.float32)
-                ground_truth = raw
-                if self.config["experiment"]["loss_func"] == "CrossEntropy":
-                    ground_truth = raw[:,0,:,:]
-                loss=self.__criterion(prediction,ground_truth )
-                
-                val_loss+=loss.item() 
-                # add adv loss !!!
-                prediction = torch.clip(prediction,-1,1)
-                
-                
-                for i in range(len(raw)):
-                    self.__val_metric.update(raw[i].detach(), noise[i].detach(), prediction[i].detach())
+        if self.config['model']['model_type'] == "Adv_UNet":
+            pass
+        
+        else: 
+            with torch.no_grad():
+                self.__val_metric.reset()
+                for iter, data in enumerate(tqdm(self.__val_loader)):
+                    raw, noise = self.__move_to_cuda(data)
+                    prediction = self.__model.forward(noise)
                     
-                
-                
-                #draw sample pics
-                # if self.__current_epoch% 15 ==0 and iter==0:
-                if iter==0:
+                    # find loss
+                    # prediction = prediction.type(torch.float32)
+                    ground_truth = raw
+                    if self.config["experiment"]["loss_func"] == "CrossEntropy":
+                        ground_truth = raw[:,0,:,:]
+                    loss=self.__criterion(prediction,ground_truth )
                     
-                    if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
-                        noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
-                    else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
-                    plt.clf()
-
-                    ax = plt.subplot(1, 3, 1)
-                    plt.tight_layout()
-                    ax.set_title('orig')
-                    ax.axis('off')
-                    plt.imshow(raw_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-                    ax = plt.subplot(1, 3, 2)
-                    plt.tight_layout()
-                    ax.set_title('noise')
-                    ax.axis('off')
-                    plt.imshow(noise_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-                    ax = plt.subplot(1, 3, 3)
-                    plt.tight_layout()
-                    ax.set_title('predicted')
-                    ax.axis('off')
-                    plt.imshow(prediction_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-                    plt.savefig(os.path.join(self._val_samples_path, "epoch_{}_sample_images.png".format(str(self.__current_epoch))))
-                    displayed = True
-                    plt.clf()
+                    val_loss+=loss.item() 
+                    # add adv loss !!!
+                    prediction = torch.clip(prediction,-1,1)
                     
+                    
+                    for i in range(len(raw)):
+                        self.__val_metric.update(raw[i].detach(), noise[i].detach(), prediction[i].detach())
+                        
+                    
+                    
+                    #draw sample pics
+                    # if self.__current_epoch% 15 ==0 and iter==0:
+                    if iter==0:
+                        
+                        if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
+                            noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
+                        else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
+                        plt.clf()
+
+                        ax = plt.subplot(1, 3, 1)
+                        plt.tight_layout()
+                        ax.set_title('orig')
+                        ax.axis('off')
+                        plt.imshow(raw_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
+
+                        ax = plt.subplot(1, 3, 2)
+                        plt.tight_layout()
+                        ax.set_title('noise')
+                        ax.axis('off')
+                        plt.imshow(noise_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
+
+                        ax = plt.subplot(1, 3, 3)
+                        plt.tight_layout()
+                        ax.set_title('predicted')
+                        ax.axis('off')
+                        plt.imshow(prediction_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
+
+                        plt.savefig(os.path.join(self._val_samples_path, "epoch_{}_sample_images.png".format(str(self.__current_epoch))))
+                        displayed = True
+                        plt.clf()
+                        
             val_loss = val_loss/(iter+1)
+           
+        if self.config['model']['model_type'] == "Adv_UNet":
+            self.writer.add_scalar(f'val/loss_on_real_img', val_loss, self.__current_epoch)        
+
+        else:
             self.writer.add_scalar(f'val/loss', val_loss, self.curr_iter)        
             self.__val_metric.avg((iter+1)*len(self.__val_loader)) # divided by num of all images
             self.__val_metric.write(self.writer, "val", self.curr_iter)

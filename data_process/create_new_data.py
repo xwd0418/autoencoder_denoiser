@@ -4,7 +4,7 @@ import cv2
 from tqdm import tqdm
 import numpy as np
 
-dir = "/root/data/hyun_fp_data/hsqc_ms_pairs/"
+dir = "/root/data/SMILES_dataset/"
 splits = ['train', 'val', 'test']
 for split in splits:
     os.makedirs(f"{dir}{split}/HSQC_plain_imgs_toghter/", exist_ok = True)
@@ -26,7 +26,7 @@ for split in splits:
         # img_pos[tuple(torch.round(pos[:,:2]).long().T)] = pos[:,2]
         # img_neg[tuple(torch.round(neg[:,:2]).long().T)] = torch.abs(neg[:,2])
         img = torch.zeros((180,120)) 
-        img[tuple(torch.round(coord[:,:2]).long().T)] = torch.abs(coord[:,2])
+        img[tuple(torch.round(coord[:,:2]).long().T)] = torch.abs(coord[:,2]).float()
         
         img = cv2.normalize(np.array(img), None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
 

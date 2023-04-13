@@ -15,3 +15,6 @@ results_to_compare*
 previous_paper_denoise/exp_results/
 results_new_SNR*
 results_debug/
+results*/
+*dataset*/
+dataset/
