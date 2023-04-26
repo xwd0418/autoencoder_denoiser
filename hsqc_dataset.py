@@ -44,7 +44,7 @@ class HSQCDataset(Dataset):
         # self.HSQC_files = list(os.listdir(os.path.join(self.dir, split, "HSQC")))
         # assert (len(self.FP_files ) == (self.HSQC_files))
 
-    def __len__(self):
+    def __len__(self): 
         return len(self.hsqc_files)*self.augment
 
     def __getitem__(self, i):
@@ -59,14 +59,8 @@ class HSQCDataset(Dataset):
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
             raw_sample = cv2.resize(raw_sample[0], (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor), interpolation = cv2.INTER_AREA) 
-        if self.config['dataset'].get('noise_factor') != None:
-            if self.config["dataset"]["noise_factor"] == "random":
-                noise_factor = random.uniform(0.2,0.6)
-            else:
-                noise_factor = self.config["dataset"]["noise_factor"]
-        else :
-            noise_factor = 1
-
+        
+        noise_factor = random.uniform(self.config["dataset"]["noise_factor"][0], self.config["dataset"]["noise_factor"][1])
    
         # add noise based on provided noise type
         if self.config["dataset"]["noise_type"] == "random":
@@ -85,7 +79,7 @@ class HSQCDataset(Dataset):
                 # random.seed(seed)
                 # torch.manual_seed(seed)
                 # torch.cuda.manual_seed_all(seed)
-                noisy_sample += self.config["dataset"]["noise_factor"] * np.random.uniform(low=-1.0, high=1.0, size=raw_sample.shape)
+                noisy_sample += noise_factor * np.random.uniform(low=-1.0, high=1.0, size=raw_sample.shape)
 
 
         else:
@@ -194,41 +188,47 @@ def filtering(x):
 
 
 def add_t1_noise(img, config):
-    height = img.shape[0]
-    streak_p = config['dataset'].get('streak_prob')  # probability of generating streak noise
-    if config['dataset'].get('noise_factor') != None:
-        if config["dataset"]["noise_factor"] == "random":
-            noise_factor = random.uniform(0.05,0.1)
-        else:
-            noise_factor = config["dataset"]["noise_factor"]
-    else :
-        noise_factor = 1
+    height, width = img.shape[0], img.shape[1]
+    streak_p_range = config['dataset'].get('streak_prob')  # probability of generating streak noise
+    streak_p = np.random.uniform(low=streak_p_range[0], high=streak_p_range[1])
+    
+
     
     noisy_img = copy.deepcopy(img)
     cross_noise, cross_points = generate_cross_noise(img, config)
+    
+    # vertical streak noises
     noisy_columns = cross_points[1]
     for col in noisy_columns:
         if np.random.binomial(1, streak_p):
             noise_rate = np.random.binomial(height, np.random.uniform(low=0.2, high=0.7))/ height
             noise =  np.random.binomial(1, noise_rate, height)
+            if np.random.binomial(1, 0.5): 
+                noise*=-1
+            noise_factor = random.uniform(config["dataset"]["noise_factor"][0], config["dataset"]["noise_factor"][1])
             noisy_img[:,col] += noise*noise_factor
-            
+    # horizontal streak noises
+    noisy_rows = cross_points[0]
+    for row in noisy_rows:
+        if np.random.binomial(1, streak_p/2):
+            noise_rate = np.random.binomial(width, np.random.uniform(low=0.2, high=0.7))/ width
+            noise =  np.random.binomial(1, noise_rate, width)
+            if np.random.binomial(1, 0.5): 
+                noise*=-1
+            noise_factor = random.uniform(config["dataset"]["noise_factor"][0], config["dataset"]["noise_factor"][1])
+            noisy_img[row] += noise*noise_factor
+    
+    if np.random.binomial(1, 0.5): 
+        cross_noise*=-1
+    noise_factor = random.uniform(config["dataset"]["noise_factor"][0], config["dataset"]["noise_factor"][1])
     noisy_img = noisy_img + cross_noise*noise_factor
         
     return noisy_img
         
 
-# def add_noise_to_column(col, cross_points, height, streak_p, noise_factor):
-#     for _ in range(int(np.sum(col))):
-#         if np.random.binomial(1, streak_p):
-#             noise_rate = np.random.binomial(height, np.random.uniform(low=0.1, high=0.7))/ height
-#             noise =  np.random.binomial(1, noise_rate, height) * (random.uniform(0.2,0.6)  if noise_factor=="random" else noise_factor)
-#             col = col+noise
-        
-#     return col
-
 def generate_cross_noise(img, config):
-    noise_probability = config['dataset']['cross_prob']
+    noise_probability_range = config['dataset']['cross_prob']
+    noise_probability = np.random.uniform(low=noise_probability_range[0], high=noise_probability_range[1])
     output_noise = np.zeros(img.shape)
     points =  np.array(np.where(img>0))
     points = points[:, np.random.permutation(points.shape[1])]
