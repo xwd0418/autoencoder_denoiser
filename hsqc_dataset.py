@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 from data_preprocess import triangle_tessellate , expand
 from PIL import Image
 
-
+# DEBUG = False
+DEBUG = True
 class HSQCDataset(Dataset):
     def __init__(self, split="train", config=None):
         
@@ -45,6 +46,8 @@ class HSQCDataset(Dataset):
         # assert (len(self.FP_files ) == (self.HSQC_files))
 
     def __len__(self): 
+        if DEBUG : 
+            return 100
         return len(self.hsqc_files)*self.augment
 
     def __getitem__(self, i):
@@ -147,6 +150,20 @@ class RealNoiseDataset_Byeol(Dataset):
         
         
 
+    def  __len__(self):
+        return len(self.imgs)
+        
+    def __getitem__(self, index):
+        return self.imgs[index]
+            
+class MultiStageRealNoiseDataset(Dataset):
+    def __init__(self, noise_level, split) -> None:
+        super().__init__()         
+        with open(f'/root/autoencoder_denoiser/dataset/save_real_imgs_in_stages/stage_{noise_level}.pkl', 'rb') as f:
+            imgs =  pickle.load(f)
+        random.shuffle(imgs)
+        
+            
     def  __len__(self):
         return len(self.imgs)
         

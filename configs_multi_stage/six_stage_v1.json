@@ -1,0 +1,19 @@
+{
+
+    "model": {
+        "model_type": "UNet",
+        "bilinear": true
+      },
+
+    "experiment": {
+        "num_epochs": 100,
+        "learning_rate": 5e-7,
+        "batch_size":16,
+        "mse_weight_false_negative": 1,
+        "num_stage":6,
+        "hard_first":false
+    } ,
+
+    "loading_path":"/root/autoencoder_denoiser/exps/results_large_batch/baseline/latest_model.pt"
+  }
+  

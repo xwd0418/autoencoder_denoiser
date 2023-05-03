@@ -50,41 +50,44 @@ class TransferDenoiseExp(object):
         else:
             print('train from sratch')
             
-    def plot(self, ground_truth, noise, prediction, path)       :
-            plt.clf()
+    def plot(self, ground_truth, noise, prediction, path, batch_index = None):
+        prediction = torch.clip(prediction,0,1)
+        if batch_index == None:
+            batch_index = random.randrange(8)
+        plt.clf()
 
-            ax = plt.subplot(2, 2, 1)
-            plt.tight_layout()
-            ax.set_title('original')
-            ax.axis('off')
-            plt.imshow(ground_truth[0].view((180,120)).cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
+        ax = plt.subplot(2, 2, 1)
+        plt.tight_layout()
+        ax.set_title('original')
+        ax.axis('off')
+        plt.imshow(ground_truth[batch_index].view((180,120)).cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
-            ax = plt.subplot(2, 2, 2)
-            plt.tight_layout()
-            ax.set_title('noise')
-            ax.axis('off')
-            plt.imshow(noise[0].view((180,120)).cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
+        ax = plt.subplot(2, 2, 2)
+        plt.tight_layout()
+        ax.set_title('noise')
+        ax.axis('off')
+        plt.imshow(noise[batch_index].view((180,120)).cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
-            ax = plt.subplot(2, 2, 3)
-            plt.tight_layout()
-            ax.set_title('predicted')
-            ax.axis('off')
-            plt.imshow(prediction[0].view((180,120)).cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-                    
-            ax = plt.subplot(2, 2, 4)
-            plt.tight_layout()
-            ax.set_title('difference')
-            ax.axis('off')
-                    
-                    # difference = prediction_pic[0].cpu()-raw_pic[0].cpu()
-                    # difference = difference.float()/2 + 0.5
-                    # print(difference)
-            difference = cv2.subtract(np.array(prediction[0].view((180,120)).cpu()), np.array(ground_truth[0].view((180,120)).cpu()))
-            plt.imshow(difference, cmap = self.custom_diff_cmap, vmax=1, vmin=-1)
+        ax = plt.subplot(2, 2, 3)
+        plt.tight_layout()
+        ax.set_title('predicted')
+        ax.axis('off')
+        plt.imshow(prediction[batch_index].view((180,120)).cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
+                
+        ax = plt.subplot(2, 2, 4)
+        plt.tight_layout()
+        ax.set_title('difference')
+        ax.axis('off')
+                
+                # difference = prediction_pic[0].cpu()-raw_pic[0].cpu()
+                # difference = difference.float()/2 + 0.5
+                # print(difference)
+        difference = cv2.subtract(np.array(prediction[batch_index].view((180,120)).cpu()), np.array(ground_truth[batch_index].view((180,120)).cpu()))
+        plt.imshow(difference, cmap = self.custom_diff_cmap, vmax=1, vmin=-1)
 
-                    # print(os.path.join(self._test_samples_path, f"sample_image{displayed}.png"))
-            plt.savefig(path)
-      
+                # print(os.path.join(self._test_samples_path, f"sample_image{displayed}.png"))
+        plt.savefig(path)
+    
     def partition_dataset(self,k):
         with open('/root/autoencoder_denoiser/dataset/imgs_as_array.pkl', 'rb') as f:
             imgs =  pickle.load(f)
@@ -98,9 +101,10 @@ class TransferDenoiseExp(object):
                 val_partition = imgs[eighty_percent:nighty_percent]
                 test_partition = imgs[nighty_percent:]
                 batch_size = self.config['experiment']['batch_size']
-                train_loader = DataLoader(CrossDataset(train_partition), batch_size=batch_size)
-                val_loader = DataLoader(CrossDataset(val_partition), batch_size=batch_size)
-                test_loader = DataLoader(CrossDataset(test_partition), batch_size=batch_size)
+                print("training data amount: ", len(train_partition))
+                train_loader = DataLoader(CrossDataset(train_partition), batch_size=batch_size, shuffle=True)
+                val_loader = DataLoader(CrossDataset(val_partition), batch_size=batch_size,shuffle=True)
+                test_loader = DataLoader(CrossDataset(test_partition), batch_size=batch_size,shuffle=True)
                 yield train_loader, val_loader, test_loader
                 split_point = len(imgs)//k
                 imgs = imgs[split_point:]+imgs[:split_point]
@@ -132,13 +136,14 @@ class TransferDenoiseExp(object):
             os.makedirs(self._val_samples_path, exist_ok=True)
             print(f"cross validation {k+1}/{k_fold}") 
             train_loader, val_loader, test_loader = next(loaders_generator)
+           
             curr_iter = 0
             self.stop_progressing=0
             self.__min_val_loss = float("inf")
             for epoch in tqdm(range(self.epoch)):
                 # early stop
                 
-                if self.stop_progressing >= 10:
+                if self.stop_progressing >= 35:
                     print("Early stopped :)")
                     break
                 
@@ -182,13 +187,13 @@ class TransferDenoiseExp(object):
             test_loss = 0
             with torch.no_grad(): 
                 for iter, data in enumerate((test_loader)):
-                    
                     noise, ground_truth = data   
                     ground_truth, noise = ground_truth.unsqueeze(1), noise.unsqueeze(1)
                     ground_truth, noise = ground_truth.to(self.device).float(), noise.to(self.device).float()
                     prediction = self.__model.forward(noise)
                     test_loss += self.__criterion(prediction,ground_truth)
-                    self.plot(ground_truth, noise, prediction, path = self._test_samples_path+f"/num_{iter}")     
+                for i in range(len(prediction)):
+                    self.plot(ground_truth, noise, prediction, path = self._test_samples_path+f"/num_{i}", batch_index=i)     
                 self.writer.add_scalar(f'test/loss', test_loss/(iter+1), 0)    
         
                      
@@ -199,6 +204,10 @@ if len(sys.argv) > 1:
 else: 
         raise Exception("which config to run?")
 
-
+seed = 114414
+np.random.seed(seed)
+random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
 exp = TransferDenoiseExp(name)
 exp.run()

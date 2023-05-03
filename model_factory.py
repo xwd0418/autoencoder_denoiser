@@ -24,7 +24,8 @@ def get_model(config):
         return CNN_encoding_model()
     elif model_type == "UNet":
         print("model :UNet")
-        return UNet(1,1,config['model']['bilinear'])
+        output_channel = 3 if config["experiment"]["loss_func"] == "CrossEntropy" else 1
+        return UNet(1,output_channel,config['model']['bilinear'])
     elif model_type == "JNet":
         print ("model: JNet (for tessellation)")
         return JNet(1,1,config['model']['bilinear'])
@@ -457,3 +458,15 @@ class EntropyLoss(nn.Module):
         if self.reduction == 'none':
             return entropy
         return self.coeff * entropy.mean()
+    
+    
+class CustomMSE(nn.Module):
+    def __init__(self, weight_false_negative=1) -> None:
+        super().__init__()
+        self.weight_false_negative = weight_false_negative
+        
+    def forward(self, prediction,target):
+        self.weight = torch.ones(prediction.shape, requires_grad=False).cuda()
+        false_nagative_positions = torch.logical_and (torch.abs(prediction)<0.33 , torch.abs(target)>0.67) 
+        self.weight[false_nagative_positions] = self.weight_false_negative
+        return torch.sum(self.weight * (prediction - target) ** 2)/len(prediction)
