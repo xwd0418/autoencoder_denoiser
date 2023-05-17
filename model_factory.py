@@ -31,7 +31,7 @@ def get_model(config):
         return JNet(1,1,config['model']['bilinear'])
     elif model_type == "UNet_2":
         print ("model: Unet with low-resolution tessellation)")
-        return UNet(2,1,config['model']['bilinear'])
+        return UNet(2,1,config['model']['bilinear'],skip_top_connection = config['model'].get('skip_top_connection') )
     elif model_type == "Adv_UNet":
         print ("model: Adv_Unet")
         softmaxed_output_size = config['model']['output_img_pooling_size'] if config['model']['CDAN'] else 1 
@@ -68,13 +68,13 @@ class JNet(nn.Module):
         return self.unet.forward(noisy_sample, tessellate_info=tessellation3)
 
 class UNet(nn.Module):
-    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False, oneD=False):
-        torch.manual_seed(3)
+    def __init__(self, n_channels_in, n_channels_out, bilinear, tessllation = False, oneD=False, skip_top_connection = False):
         super(UNet, self).__init__()
         self.n_channels_in = n_channels_in
         self.n_channels_out = n_channels_out
         self.bilinear = bilinear
-
+        self.skip_top_connection = skip_top_connection
+        
         self.inc = DoubleConv(n_channels_in, 64, oneD=oneD)
         if tessllation:
             self.down1 = Down(128,128, oneD=oneD)
@@ -105,7 +105,7 @@ class UNet(nn.Module):
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
-        x = self.up4(x, x1)
+        x = self.up4(x, x1, skip_top_connection = self.skip_top_connection)
         logits = self.outc(x)
         if feature:
             return logits, x5

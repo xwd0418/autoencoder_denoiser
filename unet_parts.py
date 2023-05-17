@@ -100,8 +100,10 @@ class Up(nn.Module):
                  nn.ConvTranspose1d(in_channels, in_channels // 2, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels, oneD=oneD)
 
-    def forward(self, x1, x2):
+    def forward(self, x1, x2, skip_top_connection = False):
         x1 = self.up(x1)
+        if skip_top_connection:
+            return x1
         # input is CHW
         if not self.oneD:
             diffY = x2.size()[2] - x1.size()[2]

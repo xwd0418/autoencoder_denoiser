@@ -17,6 +17,6 @@ results_new_SNR*
 results_debug/
 results*/
 *dataset*/*
-
+exp_autoencoder_tracking
 exps/
 !dataset/*.ipynb

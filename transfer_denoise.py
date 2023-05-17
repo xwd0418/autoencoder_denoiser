@@ -1,3 +1,8 @@
+####''''''
+'''
+This is deprecated. USE multi-stae-denoise.py and set num of stage = 1
+'''
+
 import json, sys, os, pickle, random
 import numpy as np
 import torch, copy, cv2
@@ -112,7 +117,8 @@ class TransferDenoiseExp(object):
     
     def run(self, k_fold=1):
         loaders_generator = self.partition_dataset(k=k_fold)
-        self.k_fold = k_fold    
+        self.k_fold = k_fold   
+        curr_iter = 0 
         for k in range(k_fold):
             # init model
             self.__model = get_model(self.config)
@@ -137,7 +143,7 @@ class TransferDenoiseExp(object):
             print(f"cross validation {k+1}/{k_fold}") 
             train_loader, val_loader, test_loader = next(loaders_generator)
            
-            curr_iter = 0
+            
             self.stop_progressing=0
             self.__min_val_loss = float("inf")
             for epoch in tqdm(range(self.epoch)):

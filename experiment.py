@@ -2,7 +2,7 @@ import json, pickle
 import os, math, glob
 from traceback import print_tb
 # from autoencoder_denoiser.dataloader_deprecated import get_datasets, get_real_img_dataset
-from hsqc_dataset import  get_datasets, get_real_img_dataset, DEBUG
+from hsqc_dataset import  get_datasets, get_real_img_dataset
 from model_factory import get_model , CDANLoss
 from weakref import ref
 import matplotlib.pyplot as plt
@@ -15,15 +15,13 @@ import matplotlib.image
 from sklearn.metrics import f1_score, average_precision_score, recall_score
 from torch.utils.tensorboard import SummaryWriter
 
-
+# PRINT_TIME = True
 
 os.system('nvidia-smi -L')
-experiment_version = 'tuning_DA'
-ROOT_STATS_DIR = f"./exps/results_{experiment_version}"
-if DEBUG:
-    ROOT_STATS_DIR = f"./exps/results_debug"
+# os.system("lscpu")
 
 
+experiment_version = 'baseline_selection'
 class Experiment(object):
     def __init__(self, name):
         f = open(f'/root/autoencoder_denoiser/configs_{experiment_version}/'+ name + '.json')
@@ -31,6 +29,11 @@ class Experiment(object):
         # global config
         
         config = json.load(f)
+        DEBUG = config.get("DEBUG")
+        self.ROOT_STATS_DIR = f"./exps/results_{experiment_version}"
+        if DEBUG:
+            self.ROOT_STATS_DIR = f"./exps/results_debug"
+            config['dataset']['batch_size'] = 4
         config['experiment_name'] = name
         self.config = config
         self.best_model = None
@@ -42,7 +45,7 @@ class Experiment(object):
         self.__name = config['experiment_name']
 
         # make directory for this experiement
-        self.__experiment_dir = os.path.join(ROOT_STATS_DIR, self.__name)
+        self.__experiment_dir = os.path.join(self.ROOT_STATS_DIR, self.__name)
         self._test_samples_path = self.__experiment_dir+"/testing_sample_imgs"
         os.makedirs(self._test_samples_path, exist_ok=True)
         self._val_samples_path = self.__experiment_dir+"/val_sample_imgs"
@@ -55,11 +58,13 @@ class Experiment(object):
         # Load Datasets
         self.__train_loader, self.__val_loader, self.__test_loader = get_datasets(config)
         if config['model']['model_type'] == "Adv_UNet":
-            with open('/root/autoencoder_denoiser/dataset/imgs_as_array.pkl', 'rb') as f:
-                self.__real_imgs  =  pickle.load(f)
-            self.__real_imgs = list(zip(*self.__real_imgs))[0]
-            self.real_img_index = 0
-            # self.__batch_iterator = loop_iterable(self.__real_img_loader) 
+            # with open('/root/autoencoder_denoiser/dataset/imgs_as_array.pkl', 'rb') as f:
+            #     self.__real_imgs  =  pickle.load(f)
+            # self.__real_imgs = list(zip(*self.__real_imgs))[0]
+            # self.real_img_index = 0
+            self.__adv_criterion = CDANLoss(use_entropy=self.config['model']["use_entropy"])
+            self.real_img_loader = get_real_img_dataset(config)
+            self.__real_img_batch_iterator = loop_iterable(self.real_img_loader) 
 
         # Setup Experiment
         self.__epochs = config['experiment']['num_epochs']
@@ -98,9 +103,7 @@ class Experiment(object):
         print("model finish moving")
 
         print(" choosing loss function and optimizer")
-        if self.config['model']["model_type"] == "Adv_UNet":
-            self.__adv_criterion = CDANLoss(use_entropy=self.config['model']["use_entropy"])
-            self.real_img_loader = get_real_img_dataset(config)
+            
         if  config["experiment"]["loss_func"] == "MSE":
             self.__criterion = torch.nn.MSELoss()
         elif config["experiment"]["loss_func"] == "CrossEntropy":
@@ -128,7 +131,6 @@ class Experiment(object):
         self.__init_model()
 
         # Load Experiment Data if available
-        self.__load_experiment()
         
         # finetune with real img
         if self.config['model'].get("loading_path"):
@@ -136,13 +138,14 @@ class Experiment(object):
             state_dict = torch.load(self.config['model'].get("loading_path"))
             # self.__model.module.Unet = torch.nn.DataParallel(self.__model.module.Unet, device_ids=self.model.device)
             self.__model.module.Unet.load_state_dict(state_dict['model'])
+        self.__load_experiment()
 
 
     # Loads the experiment data if exists to resume training from last saved checkpoint.
     def __load_experiment(self):
-        os.makedirs(ROOT_STATS_DIR, exist_ok=True)
+        os.makedirs(self.ROOT_STATS_DIR, exist_ok=True)
 
-        saved_model_path = os.path.join(os.path.join(ROOT_STATS_DIR, self.__name), 'latest_model.pt')
+        saved_model_path = os.path.join(os.path.join(self.ROOT_STATS_DIR, self.__name), 'latest_model.pt')
         
         if os.path.exists(saved_model_path):
             
@@ -164,7 +167,7 @@ class Experiment(object):
                 self.curr_iter = state_dict['current_iter']
                 print("Successfully loaded previous model and states")
         else:
-            for f in glob.glob(ROOT_STATS_DIR+'/'+self.__name+f"/events*"):
+            for f in glob.glob(self.ROOT_STATS_DIR+'/'+self.__name+f"/events*"):
                 os.remove(f)
             os.makedirs(self.__experiment_dir, exist_ok=True)
 
@@ -194,35 +197,44 @@ class Experiment(object):
         self.__model.train()
         # temp
         # Iterate over the data, implement the training function
+        if PRINT_TIME:
+            import time
+            start_time = time.time()
         for iter, data in enumerate(tqdm(self.__train_loader)):
+            if PRINT_TIME and iter%20 == 0:
+                print ("My program took", time.time() - start_time, "to run")
+                start_time = time.time()
             self.__train_metric.reset()
             self.curr_iter += 1 
             raw, noise = self.__move_to_cuda(data)
             if self.config['model']['model_type'] == "Adv_UNet":
-                if self.config['dataset']['real_img_dataset_name']=="Chen":
-                    real_img = next(self.__batch_iterator).unsqueeze(1)
-                if self.config['dataset']['real_img_dataset_name']=="Byeol":
-                    end_index = self.real_img_index+self.config["dataset"]['batch_size']
-                    if end_index>len(self.__real_imgs):
-                        real_img = self.__real_imgs[self.real_img_index:]
-                        self.real_img_index = end_index-len(self.__real_imgs)
-                        real_img += self.__real_imgs[:self.real_img_index]                                    
-                    else:
-                        real_img = self.__real_imgs[self.real_img_index:end_index]
-                        self.real_img_index=end_index
-                    real_img = np.stack(real_img)
-                    real_img = torch.tensor(real_img).unsqueeze(1)
-                    
-                    if real_img.shape[0]< torch.cuda.device_count() :
-                        real_img = torch.cat((real_img, next(self.__batch_iterator)[0].unsqueeze(1)))
+                # if self.config['dataset']['real_img_dataset_name']=="Chen":
+                #     real_img = next(self.__batch_iterator).unsqueeze(1)
+                # if self.config['dataset']['real_img_dataset_name']=="Byeol":
+                #     end_index = self.real_img_index+self.config["dataset"]['batch_size']
+                #     if end_index>len(self.__real_imgs):
+                #         real_img = self.__real_imgs[self.real_img_index:]
+                #         self.real_img_index = end_index-len(self.__real_imgs)
+                #         real_img += self.__real_imgs[:self.real_img_index]                                    
+                #     else:
+                #         real_img = self.__real_imgs[self.real_img_index:end_index]
+                #         self.real_img_index=end_index
+                #     real_img = np.stack(real_img)
+                #     real_img = torch.tensor(real_img).unsqueeze(1)
+                 
+                # for kk in self.real_img_loader:
+                #     print(kk)
+                #     pass   
+                real_img = next(self.__real_img_batch_iterator)[0]
+                if real_img.shape[0]< torch.cuda.device_count() :
+                    real_img = torch.cat((real_img, next(self.__real_img_batch_iterator)[0].unsqueeze(1)))
 
-                    
                 real_img = real_img.float().to(self.device)
             self.__optimizer.zero_grad()
             # print ("noise shape",noise.shape)        
             
             if self.config['model']['model_type'] == "Adv_UNet":
-                adv_coeff = calc_coeff(self.curr_iter)
+                adv_coeff = self.calc_coeff(self.curr_iter)
                 # print(noise.shape, real_img.shape)
                 prediction, domain_prediction, softmax_output = self.__model(x=noise, y=real_img,  coeff=adv_coeff, plain=False)
                 # prediction = self.__model(x=noise, y=None,  coeff=adv_coeff)
@@ -248,7 +260,7 @@ class Experiment(object):
                 """Warning: if want to write adv_loss to tensorboard, 
                 do it at the CDAN_LOSS module since the loss here is multiplied by the coeff"""
                 # print('classify loss is: ', loss)
-                loss = loss + 0.3*adv_loss
+                loss = loss + 0.1*adv_loss
                 # print("adv_loss is ",adv_loss)
              
                 # print('total loss is: ', loss)
@@ -363,19 +375,19 @@ class Experiment(object):
             ax = plt.subplot(1, 3, 1)
             plt.tight_layout()
             ax.set_title('orig')
-            ax.axis('off')
+            # ax.axis('off')
             plt.imshow(raw_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
             ax = plt.subplot(1, 3, 2)
             plt.tight_layout()
             ax.set_title('noise')
-            ax.axis('off')
+            # ax.axis('off')
             plt.imshow(noise_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
             ax = plt.subplot(1, 3, 3)
             plt.tight_layout()
             ax.set_title('predicted')
-            ax.axis('off')
+            # ax.axis('off')
 
             plt.imshow(prediction_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
@@ -414,19 +426,20 @@ class Experiment(object):
             print("avg testing loss is ", test_loss)
             
         if self.config['model']['model_type'] == "Adv_UNet":
-            with torch.no_grad():   
+            with torch.no_grad(): 
+                test_loss_on_real = 0  
                 for iter, data in enumerate(tqdm(self.real_img_loader )):
                     noise, raw = data    
                     prediction = self.__model.forward(noise)
                     if len(raw.shape)==3:   
                         raw, noise = raw.unsqueeze(1), noise.unsqueeze(1)
                     raw, noise = raw.to(self.device).float(), noise.to(self.device).float()
-                    loss = self.test_step(iter, raw, noise)
+                    loss = self.test_step(iter, raw, noise, prediction, type = "real")
                     test_loss_on_real += loss    
                 test_loss_on_real = test_loss_on_real/(iter+1)
             self.writer.add_scalar(f'test/loss_on_real_imgs', test_loss_on_real, self.curr_iter)     
 
-    def test_step(self, displayed, raw, noise, prediction, type = "synthesis"): 
+    def test_step(self, displayed_num, raw, noise, prediction, type = "synthesis"): 
         
         
         if self.config["experiment"]["loss_func"] == "CrossEntropy":
@@ -442,7 +455,7 @@ class Experiment(object):
         
 
 
-        if displayed<20:
+        if displayed_num<20:
             if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
                 noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
             else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
@@ -457,35 +470,35 @@ class Experiment(object):
             ax = plt.subplot(2, 2, 1)
             plt.tight_layout()
             ax.set_title('original')
-            ax.axis('off')
+            # ax.axis('off')
             plt.imshow(raw_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
             ax = plt.subplot(2, 2, 2)
             plt.tight_layout()
             ax.set_title('noise')
-            ax.axis('off')
+            # ax.axis('off')
             plt.imshow(noise_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
 
             ax = plt.subplot(2, 2, 3)
             plt.tight_layout()
             ax.set_title('predicted')
-            ax.axis('off')
+            # ax.axis('off')
             plt.imshow(prediction_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
                     
             ax = plt.subplot(2, 2, 4)
             plt.tight_layout()
             ax.set_title('difference')
-            ax.axis('off')
+            # ax.axis('off')
                     
                     # difference = prediction_pic[0].cpu()-raw_pic[0].cpu()
                     # difference = difference.float()/2 + 0.5
                     # print(difference)
             # print("prediction_pic.dtype: ", prediction_pic.dtype, "ground_truth.dtype: ", ground_truth.dtype)            
-            difference = cv2.subtract(np.array(prediction_pic[0].cpu()), np.array(ground_truth[0].cpu()))
+            difference = cv2.subtract(np.array(prediction_pic[0].cpu()), np.array(raw_pic[0].cpu()))
             plt.imshow(difference, cmap = self.custom_diff_cmap, vmax=1, vmin=-1)
 
                     # print(os.path.join(self._test_samples_path, f"sample_image{displayed}.png"))
-            plt.savefig(os.path.join(self._test_samples_path, f"{type}_image{displayed}.png"))
+            plt.savefig(os.path.join(self._test_samples_path, f"{type}_image{displayed_num}.png"))
             
             plt.clf()
         return loss    
@@ -520,14 +533,23 @@ class Experiment(object):
             raw, noise = raw.to(self.device).float(), noise.to(self.device).float()
         return raw,noise  
             
+    
+    def calc_coeff(self, iter_num, high=1.0, low=0.0, alpha=10.0, max_iter=1000.0):
+        kick_in_iter = self.config['experiment'].get('adv_coeff_kick_in_iter')
+        if kick_in_iter:
+            coeff_param = kick_in_iter/10
+        else : 
+            coeff_param = 20.0
+        return np.float(coeff_param* (high - low) / (1.0 + np.exp(-alpha*iter_num / max_iter)) - (high - low) + low)
+
 
 def loop_iterable(iterable):
     while True:
+        # for i in  iterable: 
+            # print(i)
+            # yield i
         yield from iterable
         
-
-def calc_coeff(iter_num, high=1.0, low=0.0, alpha=10.0, max_iter=1000.0):
-    return np.float(2.0 * (high - low) / (1.0 + np.exp(-alpha*iter_num / max_iter)) - (high - low) + low)
 
 
 # SNR helper:

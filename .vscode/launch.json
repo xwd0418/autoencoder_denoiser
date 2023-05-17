@@ -9,14 +9,14 @@
             "name": "Python: denoise debug",
             "type": "python",
             "request": "launch",
-            "program": "/root/autoencoder_denoiser/main.py",
+            "program": "/root/autoencoder_denoiser/autoencoder_exp.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
                 // "cdan"
                 // "baseline_adv"
                 // "t1_03"
-                "CE_loss"
+                "adding_noise_to_enhanced"
             ]
         }
     ]

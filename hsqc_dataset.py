@@ -11,8 +11,6 @@ import matplotlib.pyplot as plt
 from data_preprocess import triangle_tessellate , expand
 from PIL import Image
 
-# DEBUG = False
-DEBUG = True
 class HSQCDataset(Dataset):
     def __init__(self, split="train", config=None):
         
@@ -46,8 +44,8 @@ class HSQCDataset(Dataset):
         # assert (len(self.FP_files ) == (self.HSQC_files))
 
     def __len__(self): 
-        if DEBUG : 
-            return 100
+        if self.config.get("DEBUG"): 
+            return 50
         return len(self.hsqc_files)*self.augment
 
     def __getitem__(self, i):
@@ -62,7 +60,22 @@ class HSQCDataset(Dataset):
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
             raw_sample = cv2.resize(raw_sample[0], (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor), interpolation = cv2.INTER_AREA) 
-        
+        signal_enhance_factor =  self.config['dataset'].get('signal_enhance')
+        if signal_enhance_factor:
+            raw_sample = np.sign(raw_sample) * (np.abs(raw_sample)) ** signal_enhance_factor
+
+        signal_enlarge_factor = self.config['dataset'].get('signal_enlarge')
+        if signal_enlarge_factor:
+            signal_position = np.where(raw_sample!=0)
+            signal_enlarge = 1
+            for i in range(0, signal_enlarge+1):
+                for j in range(0, signal_enlarge+1):
+                    if i==0 and j==0: continue
+                    # here use index -2 -1 instead of 0 ,1 is because I have unsqueezed the image
+                    new_position = np.clip(signal_position[0]+i, 0, raw_sample.shape[0]-1) ,  np.clip(signal_position[1]+j , 0, raw_sample.shape[1]-1)  
+                    raw_sample[new_position] += raw_sample[signal_position]
+        raw_sample = np.clip(raw_sample, -1. , 1.)
+            
         noise_factor = random.uniform(self.config["dataset"]["noise_factor"][0], self.config["dataset"]["noise_factor"][1])
    
         # add noise based on provided noise type
@@ -74,16 +87,16 @@ class HSQCDataset(Dataset):
             noisy_sample = raw_sample + noise_factor * np.random.uniform(low=-1.0, high=1.0, size=raw_sample.shape)
         elif self.config["dataset"]["noise_type"] == "t1": 
             noisy_sample = add_t1_noise(raw_sample, self.config)
-            white_noise_rate=self.config['dataset'].get('white_noise_rate')
-            if white_noise_rate is not None:
-                        
-                # seed = 10086
-                # np.random.seed(seed)
-                # random.seed(seed)
-                # torch.manual_seed(seed)
-                # torch.cuda.manual_seed_all(seed)
-                noisy_sample += noise_factor * np.random.uniform(low=-1.0, high=1.0, size=raw_sample.shape)
 
+            white_noise_chance_bound = self.config['dataset'].get('white_noise_chance_bound')
+            if white_noise_chance_bound is None : white_noise_chance_bound = [0.005, 0.2]
+            low_bound, up_bound = white_noise_chance_bound[0],white_noise_chance_bound[1]
+            chance_shown = np.random.uniform(low_bound, up_bound)
+            shown_positions = np.random.binomial(1, chance_shown,size=raw_sample.shape)
+            half_half = np.random.binomial(1, 0.5,size=raw_sample.shape)
+            half_half[half_half==0]=-1
+            shown_positions = shown_positions * half_half
+            noisy_sample +=  noise_factor * shown_positions
 
         else:
             raise Exception("unkown type of noise {}".format(self.config["dataset"]["noise_type"]))
@@ -145,51 +158,62 @@ class RealNoiseDataset_Chen(Dataset):
 class RealNoiseDataset_Byeol(Dataset):
     def __init__(self, config) -> None:
         super().__init__() 
-        with open('/root/autoencoder_denoiser/dataset/imgs_as_array.pkl', 'rb') as f:
-             self.imgs =  pickle.load(f)
         
+        if config['dataset'].get('real_img_keep_size'):
+            self.real_img_data_dir = f'/root/autoencoder_denoiser/dataset/orig_size_real_imgs/'        
+        else:
+            self.real_img_data_dir = f'/root/autoencoder_denoiser/dataset/resized_real_imgs/'
+        self.paths =  glob(self.real_img_data_dir+"*")
         
 
     def  __len__(self):
-        return len(self.imgs)
+        return len(self.paths)
         
     def __getitem__(self, index):
-        return self.imgs[index]
+        
+        loaded_data = np.load(self.paths[index])
+        return (np.expand_dims(loaded_data['noise'],0), np.expand_dims(loaded_data['ground_truth'],0))
+    
             
-class MultiStageRealNoiseDataset(Dataset):
-    def __init__(self, noise_level, split) -> None:
-        super().__init__()         
-        with open(f'/root/autoencoder_denoiser/dataset/save_real_imgs_in_stages/stage_{noise_level}.pkl', 'rb') as f:
-            imgs =  pickle.load(f)
-        random.shuffle(imgs)
+# class MultiStageRealNoiseDataset(Dataset):
+#     def __init__(self, noise_level, split) -> None:
+#         super().__init__()         
+#         with open(f'/root/autoencoder_denoiser/dataset/save_real_imgs_in_stages/stage_{noise_level}.pkl', 'rb') as f:
+#             imgs =  pickle.load(f)
+#         random.shuffle(imgs)
         
             
-    def  __len__(self):
-        return len(self.imgs)
+#     def  __len__(self):
+#         return len(self.imgs)
         
-    def __getitem__(self, index):
-        return self.imgs[index]
+#     def __getitem__(self, index):
+#         return self.imgs[index]
             
 
 def get_datasets(config):
     
-    
+    DEBUG = config.get("DEBUG")
+    num_workers = 0 if DEBUG else 16
     shuffle=config["dataset"]['shuffle']
     batch = config["dataset"]['batch_size']
-    train_loader = DataLoader(HSQCDataset("train", config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
-    val_loader = DataLoader(HSQCDataset("val",config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
-    test_loader = DataLoader(HSQCDataset("test",config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+    train_loader = DataLoader(HSQCDataset("train", config), batch_size=batch, shuffle=shuffle, num_workers=num_workers)
+    val_loader = DataLoader(HSQCDataset("val",config), batch_size=batch, shuffle=shuffle, num_workers=num_workers)
+    test_loader = DataLoader(HSQCDataset("test",config), batch_size=batch, shuffle=shuffle, num_workers=num_workers)
     return train_loader, val_loader , test_loader
 
 def get_real_img_dataset(config):
+    DEBUG = config.get("DEBUG")
+    num_workers = 0 if DEBUG else 16
     batch = config["dataset"]['batch_size']
+    if config['dataset'].get('real_img_keep_size') :
+        batch = 2
     shuffle=config["dataset"]['shuffle']
     if config['dataset']['real_img_dataset_name']=="Chen":
         print("using Chen's real imgs")
-        return DataLoader(RealNoiseDataset_Chen(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+        return DataLoader(RealNoiseDataset_Chen(config), batch_size=min(16,batch), shuffle=shuffle, num_workers=num_workers)
     if config['dataset']['real_img_dataset_name']=="Byeol":
         print("using Byeol's real imgs")
-        return DataLoader(RealNoiseDataset_Byeol(config), batch_size=batch, shuffle=shuffle, num_workers=os.cpu_count())
+        return DataLoader(RealNoiseDataset_Byeol(config), batch_size=min(16,batch), shuffle=shuffle, num_workers=num_workers)
             
 
 

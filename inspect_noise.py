@@ -1,65 +1,25 @@
-# originally used to check the computation of accuracy (IoU)
-# now it is used to demo some raw/noised/pre_filtered image
-import json
-import os,sys
-from hsqc_dataset import get_datasets
-from model_factory import get_model
-from weakref import ref
-import matplotlib.pyplot as plt
-import numpy as np
-import torch, copy
+from hsqc_dataset import *
 from tqdm import tqdm
-from datetime import datetime
-import shutil
-
-
-
-name = "t1_04"
-f = open('./configs/'+ name + '.json')
+import json
+f = open('/root/autoencoder_denoiser/configs_baseline_selection/dann_adv_loss.json')
 config = json.load(f)
-train_loader, val_loader, test_loader = get_datasets(config)
+# test_loader = DataLoader(RealNoiseDataset_Byeol(config), batch_size=2, shuffle=False, num_workers=1)
+_,_,test_loader = get_datasets(config)
+import matplotlib.pyplot as plt
 
-for iter, data in enumerate(tqdm(train_loader)):
+
+import matplotlib.image
+
+clist = [(0,"darkblue"), (0.5,"white"), (1, "darkred")]
+custom_HSQC_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",clist)
+raw_image_collection = []
+noise_image_collection = []
+plt.rcParams["figure.figsize"] = (20,10)
+for iter, data in enumerate(tqdm(test_loader)):
     raw, noise = data
-    if iter ==2  :
-        break
-
-prediction = noise.round()
-intersec = np.sum(np.array(raw.cpu()) * np.array(prediction.cpu()))
-union = torch.sum(raw)+torch.sum(prediction)-intersec
-accu =intersec / union
-
-print("raw is ", torch.sum(raw))
-print("predict is ",torch.sum(prediction) )
-print("interesct is ", intersec )
-print("union is " , union)
-
-print(accu)
-
-plt.clf()
-
-ax = plt.subplot(1, 3, 1)
-plt.tight_layout()
-ax.set_title('orig')
-ax.axis('off')
-plt.imshow(raw[0,0].cpu(),cmap='gray')
-
-ax = plt.subplot(1, 3, 2)
-plt.tight_layout()
-ax.set_title('noise')
-ax.axis('off')
-plt.imshow(noise[0,0].cpu(),cmap='gray')
-
-ax = plt.subplot(1, 3, 3)
-plt.tight_layout()
-ax.set_title('predicted')
-ax.axis('off')
-plt.imshow(prediction[0,0].cpu(),cmap='gray')
-
-plt.savefig("noise_sample.png")
-displayed = True
-plt.clf()
-
-
-# print(noise[0,0,28])
-
+    # plt.imshow(raw[0,0],cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
+    # plt.figure()
+    # plt.imshow(noise[0,0],cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
+    # plt.figure()
+    if iter == 3: break
+print(noise.shape)
