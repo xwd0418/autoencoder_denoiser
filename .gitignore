@@ -23,6 +23,9 @@ configs*/*
 *.png
 *.jpg
 inspect*/*
+inspect*
+useless/
+previous_paper_denoise/
 
 !configs_bitmap
 !dataset/*.ipynb
