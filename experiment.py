@@ -15,15 +15,15 @@ import matplotlib.image
 from sklearn.metrics import f1_score, average_precision_score, recall_score
 from torch.utils.tensorboard import SummaryWriter
 
-# PRINT_TIME = True
+PRINT_TIME = False
 
 os.system('nvidia-smi -L')
 # os.system("lscpu")
 
 
-experiment_version = 'baseline_selection'
 class Experiment(object):
     def __init__(self, name):
+        experiment_version = 'bitmap'
         f = open(f'/root/autoencoder_denoiser/configs_{experiment_version}/'+ name + '.json')
         # f = open(f'/root/autoencoder_denoiser/configs_baseline_selection/'+ name + '.json')
         # global config

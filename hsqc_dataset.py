@@ -3,12 +3,11 @@ from glob import glob
 import cv2, pickle
 import torch, copy
 from torch.utils.data import Dataset, DataLoader
-import pandas as pd
 import numpy as np
 import random
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from data_preprocess import triangle_tessellate , expand
+# from data_preprocess import triangle_tessellate , expand
 from PIL import Image
 
 class HSQCDataset(Dataset):
@@ -55,11 +54,10 @@ class HSQCDataset(Dataset):
         file_index = i//self.augment
 
         raw_sample = torch.load(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
+        print(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         # print(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         raw_sample = np.array(raw_sample, dtype="float32")
-        upscale_factor = self.config['dataset'].get('signal_upscale')
-        if upscale_factor!=None:
-            raw_sample = cv2.resize(raw_sample[0], (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor), interpolation = cv2.INTER_AREA) 
+        raw_sample = raw_sample[0]
         signal_enhance_factor =  self.config['dataset'].get('signal_enhance')
         if signal_enhance_factor:
             raw_sample = np.sign(raw_sample) * (np.abs(raw_sample)) ** signal_enhance_factor
@@ -111,28 +109,40 @@ class HSQCDataset(Dataset):
         if self.config["dataset"]["pre-filtered"]:
             noisy_sample = np.array([[[filtering(float(k)) for k in j] for j in i] for i in noisy_sample])
         
-        if self.config["dataset"]["tessellate"]:
+        # if self.config["dataset"]["tessellate"]:
             
-            selected_noisy_sample = np.array([[[selecting(float(k)) for k in j] for j in i] for i in noisy_sample])
-            tessellated_noise = triangle_tessellate( selected_noisy_sample[0], self.config["dataset"]["upscale"])
-            tessellated_noise = np.expand_dims(tessellated_noise, axis=0)
-            # tessellated_noise = np.expand_dims(tessellated_noise, axis=0)
-            # noisy_sample = np.stack((expand(noisy_sample), tessellated_noise), axis=0)
+        #     selected_noisy_sample = np.array([[[selecting(float(k)) for k in j] for j in i] for i in noisy_sample])
+        #     tessellated_noise = triangle_tessellate( selected_noisy_sample[0], self.config["dataset"]["upscale"])
+        #     tessellated_noise = np.expand_dims(tessellated_noise, axis=0)
+        #     # tessellated_noise = np.expand_dims(tessellated_noise, axis=0)
+        #     # noisy_sample = np.stack((expand(noisy_sample), tessellated_noise), axis=0)
             
-            ### using low resolution of tessellation 
-            if self.config['model']['model_type'] == "UNet_2": 
-                concat = np.concatenate((noisy_sample, tessellated_noise))    
-                if self.config['dataset']['absolute']:
-                    raw_sample,concat = np.abs(raw_sample), np.abs(concat)            
-                return raw_sample, concat
-            ### using Jnet 
-            else:
-                if self.config['dataset']['absolute']:
-                    raw_sample, noisy_sample, tessellated_noise = np.abs(raw_sample), np.abs(noisy_sample), np.abs(tessellated_noise)
-                return raw_sample, (noisy_sample, tessellated_noise)
+        #     ### using low resolution of tessellation 
+        #     if self.config['model']['model_type'] == "UNet_2": 
+        #         concat = np.concatenate((noisy_sample, tessellated_noise))    
+        #         if self.config['dataset']['absolute']:
+        #             raw_sample,concat = np.abs(raw_sample), np.abs(concat)            
+        #         return raw_sample, concat
+        #     ### using Jnet 
+        #     else:
+        #         if self.config['dataset']['absolute']:
+        #             raw_sample, noisy_sample, tessellated_noise = np.abs(raw_sample), np.abs(noisy_sample), np.abs(tessellated_noise)
+        #         return raw_sample, (noisy_sample, tessellated_noise)
         if self.config['dataset']['absolute']:
             raw_sample, noisy_sample = np.abs(raw_sample), np.abs(noisy_sample)
+            
+        upscale_factor = self.config['dataset'].get('signal_upscale')
+        if upscale_factor!=None:
+            # upscaled_shape = (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor)
+            # raw_sample = cv2.resize(raw_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
+            # noisy_sample = cv2.resize(noisy_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
+            raw_sample = np.repeat(raw_sample, upscale_factor, axis=1)
+            raw_sample = np.repeat(raw_sample, upscale_factor, axis=2)
+            noisy_sample =  np.repeat(noisy_sample, upscale_factor, axis=1)
+            noisy_sample =  np.repeat(noisy_sample, upscale_factor, axis=2)
         return raw_sample, noisy_sample
+    
+
 
 class RealNoiseDataset_Chen(Dataset):
     def __init__(self, config):
@@ -156,15 +166,29 @@ class RealNoiseDataset_Chen(Dataset):
         return self.imgs[index]
     
 class RealNoiseDataset_Byeol(Dataset):
-    def __init__(self, config) -> None:
+    def __init__(self, config, range_low = 0, range_high = float('inf'), 
+                 show_name=None,
+                 data_folder_name = "resized_super_noisy_1"
+                 ) -> None:
         super().__init__() 
+        self.show_name = show_name
+        self.data_folder_name = data_folder_name
+        # bitmap = "_bitmap"
+        # if config['dataset'].get('countor_map'):
+        #     bitmap=""
         
         if config['dataset'].get('real_img_keep_size'):
-            self.real_img_data_dir = f'/root/autoencoder_denoiser/dataset/orig_size_real_imgs/'        
-        else:
-            self.real_img_data_dir = f'/root/autoencoder_denoiser/dataset/resized_real_imgs/'
+            self.data_folder_name = self.data_folder_name.replace("resized", "orig_size")
+        self.real_img_data_dir = f'/root/autoencoder_denoiser/dataset/{self.data_folder_name}/'
         self.paths =  glob(self.real_img_data_dir+"*")
-        
+        # print("self.real_img_data_dir", self.real_img_data_dir)
+        # print(len(self.paths))
+        # for path in self.paths:
+        #     print((path.split("_")[-1].split(".")[0]))
+        #     print(int(path.split("_")[-1].split(".")[0]))
+        self.paths = [path for path in self.paths if 
+                      range_low <= int(path.split("_")[-1].split(".")[0]) <= range_high]
+        # print(len(self.paths))
 
     def  __len__(self):
         return len(self.paths)
@@ -172,8 +196,9 @@ class RealNoiseDataset_Byeol(Dataset):
     def __getitem__(self, index):
         
         loaded_data = np.load(self.paths[index])
-        return (np.expand_dims(loaded_data['noise'],0), np.expand_dims(loaded_data['ground_truth'],0))
-    
+        if not self.show_name:
+            return (np.expand_dims(loaded_data['noise'],0), np.expand_dims(loaded_data['ground_truth'],0))
+        return (np.expand_dims(loaded_data['noise'],0), np.expand_dims(loaded_data['ground_truth'],0), loaded_data['name'])
             
 # class MultiStageRealNoiseDataset(Dataset):
 #     def __init__(self, noise_level, split) -> None:

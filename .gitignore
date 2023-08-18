@@ -5,7 +5,6 @@
 experiment_data/*
 denoised_dataset
 test
-*inspect*
 2D_code_denoise/
 denoised_results/
 previous_paper_denoise/oneD*
@@ -13,10 +12,17 @@ previous_paper_denoise/gen_dataset
 previous_paper_denoise/log*
 results_to_compare*
 previous_paper_denoise/exp_results/
-results_new_SNR*
-results_debug/
+# results_new_SNR*
+# results_debug/
 results*/
 *dataset*/*
 exp_autoencoder_tracking
 exps/
+configs*/*
+.vscode/
+*.png
+*.jpg
+inspect*/*
+
+!configs_bitmap
 !dataset/*.ipynb
