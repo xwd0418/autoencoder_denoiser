@@ -19,7 +19,7 @@ results*/
 exp_autoencoder_tracking
 exps/
 # configs*/*
-configs_4.13_solved_iterator_bug
+# configs_4.13_solved_iterator_bug
 .vscode/
 *.png
 *.jpg
