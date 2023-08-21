@@ -254,11 +254,16 @@ def filtering(x):
 
 
 def add_t1_noise(img, config):
-    height, width = img.shape[0], img.shape[1]
-    streak_p_range = config['dataset'].get('streak_prob')  # probability of generating streak noise
-    streak_p = np.random.uniform(low=streak_p_range[0], high=streak_p_range[1])
-    
+    """_summary_
 
+    Args:
+        img (_2d numpy array, e.g. size of 180*120_): input image without noise
+        config (dict): some hyperparameters to determine how the noise will be
+
+    """
+    height, width = img.shape[0], img.shape[1]
+    p_streak_range = config['dataset'].get('streak_prob')  # probability of generating streak noise
+    p_streak = np.random.uniform(low=p_streak_range[0], high=p_streak_range[1])
     
     noisy_img = copy.deepcopy(img)
     cross_noise, cross_points = generate_cross_noise(img, config)
@@ -266,24 +271,32 @@ def add_t1_noise(img, config):
     # vertical streak noises
     noisy_columns = cross_points[1]
     for col in noisy_columns:
-        if np.random.binomial(1, streak_p):
+        if np.random.binomial(1, p_streak):
             noise_rate = np.random.binomial(height, np.random.uniform(low=0.2, high=0.7))/ height
             noise =  np.random.binomial(1, noise_rate, height)
-            if np.random.binomial(1, 0.5): 
+            
+            # this is only need it the image contains different kinds of H-C bound,
+            # i.e. input contains both positive and negative values
+            if np.random.binomial(1, 0.5):  
                 noise*=-1
             noise_factor = random.uniform(config["dataset"]["noise_factor"][0], config["dataset"]["noise_factor"][1])
             noisy_img[:,col] += noise*noise_factor
+   
     # horizontal streak noises
     noisy_rows = cross_points[0]
     for row in noisy_rows:
-        if np.random.binomial(1, streak_p/2):
+        if np.random.binomial(1, p_streak/2): # division by 2 is because there are more vertical streaks
             noise_rate = np.random.binomial(width, np.random.uniform(low=0.2, high=0.7))/ width
             noise =  np.random.binomial(1, noise_rate, width)
+            # same as above : this is only need it the image contains different kinds of H-C bound,
+            # i.e. input contains both positive and negative values
             if np.random.binomial(1, 0.5): 
                 noise*=-1
             noise_factor = random.uniform(config["dataset"]["noise_factor"][0], config["dataset"]["noise_factor"][1])
             noisy_img[row] += noise*noise_factor
-    
+   
+    # same as above : this is only need it the image contains different kinds of H-C bound,
+     # i.e. input contains both positive and negative values
     if np.random.binomial(1, 0.5): 
         cross_noise*=-1
     noise_factor = random.uniform(config["dataset"]["noise_factor"][0], config["dataset"]["noise_factor"][1])

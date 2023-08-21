@@ -18,10 +18,12 @@ results*/
 *dataset*/*
 exp_autoencoder_tracking
 exps/
-configs*/*
+# configs*/*
+configs_4.13_solved_iterator_bug
 .vscode/
 *.png
 *.jpg
+*.txt
 inspect*/*
 inspect*
 useless/

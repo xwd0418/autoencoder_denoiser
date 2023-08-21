@@ -1,0 +1,30 @@
+{
+    "experiment_name": "noise1",
+    "dataset": {
+      "shuffle": true,
+      "signal_upscale":1,
+      "noise_type": "t1",
+      "noise_factor": 0.35,
+      "white_noise_rate":0.01,
+      "pre-filtered": false,
+      "batch_size": 28,
+      "tessellate": false,
+      "num_workers": 4,
+      "streak_prob": 0.6,
+      "cross_prob": 0.3,
+      "data_augment": 5
+    },
+    "experiment": {
+      "num_epochs": 100,
+      "learning_rate": 8e-5,
+      "loss_func":"MSE",
+      "lr_step": 5,
+      "lr_scheduler_step": [10, 44, 90, 160, 190],
+      "lr_scheduler_type": "criterion"
+    },
+    "model": {
+        "model_type": "UNet",
+        "bilinear": true
+      }
+  }
+  
