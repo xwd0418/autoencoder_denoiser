@@ -167,12 +167,16 @@ class RealNoiseDataset_Chen(Dataset):
     
 class RealNoiseDataset_Byeol(Dataset):
     def __init__(self, config, range_low = 0, range_high = float('inf'), 
-                 show_name=None,
-                 data_folder_name = "resized_super_noisy_1"
+                 show_name=False,
                  ) -> None:
         super().__init__() 
         self.show_name = show_name
-        self.data_folder_name = data_folder_name
+        if config['dataset']['super_noisy']:          
+            self.data_folder_name = "resized_super_noisy_1"
+            print("using Byeol's real imgs: super noisy")
+        else:
+            self.data_folder_name = 'resized_real_imgs_bitmap'
+            print("using Byeol's real imgs: normal noise")
         # bitmap = "_bitmap"
         # if config['dataset'].get('countor_map'):
         #     bitmap=""
@@ -237,7 +241,7 @@ def get_real_img_dataset(config):
         print("using Chen's real imgs")
         return DataLoader(RealNoiseDataset_Chen(config), batch_size=min(16,batch), shuffle=shuffle, num_workers=num_workers)
     if config['dataset']['real_img_dataset_name']=="Byeol":
-        print("using Byeol's real imgs")
+        
         return DataLoader(RealNoiseDataset_Byeol(config), batch_size=min(16,batch), shuffle=shuffle, num_workers=num_workers)
             
 

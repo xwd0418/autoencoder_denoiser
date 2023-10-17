@@ -13,6 +13,7 @@ import argparse
 from model_factory import UNet
 from hsqc_dataset import *
 from tqdm import tqdm
+from utils import display_pics
 
 """configurations"""
 device = torch.device("cuda:0")
@@ -51,20 +52,13 @@ class Test():
         self.model = model
 
         
-# my_model_test = Test("t1_03")
-# paper_1d_test = Test("paper_1d")
-dann_test = Test('adv', threshold=True)
-# match_hist_baseline_test = Test("match_hist")
+
 
 criterion = torch.nn.MSELoss(reduction="sum")
-clist = [(0,"darkblue"), (0.5,"white"), (1, "darkred")]
-custom_HSQC_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",clist)
-diff_clist = [(0,"green"), (0.5,"white"), (1, "red")]
-custom_diff_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",diff_clist)
-plt.rcParams["figure.figsize"] = (16,20)
 
-test_loader = DataLoader(RealNoiseDataset_Byeol(dann_test.config,range_low=0,range_high=2, show_name=True),
-                         batch_size=1, shuffle=False, num_workers=8)
+
+# dann_test_loader = DataLoader(RealNoiseDataset_Byeol(dann_test.config,range_low=0,range_high=2, show_name=True),
+                        #  batch_size=1, shuffle=False, num_workers=8)
 
 
 def compute_SNR(raw, noisy_img): 
@@ -110,44 +104,9 @@ def test(*model_tests):
                     # print("?")
                     # plt.clf()
 
-                    ax = plt.subplot(2, 2, 1)
-                    plt.tight_layout()
-                    ax.set_title('original',fontsize=18)
-                    # ax.axis('off')
-                    plt.imshow(raw_pic[0].cpu(),cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
-                    plt.colorbar()
-                    
-                    ax = plt.subplot(2, 2, 2)
-                    plt.tight_layout()
-                    ax.set_title('noise',fontsize=18)
-                    # ax.axis('off')
-                    plt.imshow(noise_pic[0].cpu(),cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
-                    plt.colorbar()
-                    
-                    ax = plt.subplot(2, 2, 3)
-                    plt.tight_layout()
-                    ax.set_title('predicted',fontsize=18)
-                    # ax.axis('off')
-                    plt.imshow(prediction_pic[0].cpu(),cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
-                    plt.colorbar()
-                    
-                    ax = plt.subplot(2, 2, 4)
-                    plt.tight_layout()
-                    ax.set_title('difference', fontsize=18)
-                    # ax.axis('off')
-                    
-                    # difference = prediction_pic[0].cpu()-raw_pic[0].cpu()
-                    # difference = difference.float()/2 + 0.5
-                    # print(difference)
-                    difference = cv2.subtract(np.array(prediction_pic[0].cpu()), np.array(raw_pic[0].cpu()))
-                    plt.imshow(difference, cmap = custom_diff_cmap, vmax=1, vmin=-1)
-
-                    plt.colorbar()
-
-
                     # print(os.path.join(self._test_samples_path, f"sample_image{displayed}.png"))
-                    # plt.savefig(os.path.join(self._test_samples_path, f"sample_image{displayed}.png"))
-                    plt.figure()
+                    
+                    display_pics(noise_pic[0].cpu(), prediction_pic[0].cpu(), raw_pic[0].cpu())
                     displayed = displayed+1
             
                     
@@ -156,12 +115,13 @@ def test(*model_tests):
             print("test loader size:" , len(test_loader.dataset))
             print(f"loss of model: {model_test.name} is {loss}")
             print(f"snr of model: {model_test.name} is {snr}")
+
+
     
 def test_thresholding(test_loader, threshold_value = 0.4, dir_name_to_save = "thresholding"):
     testing_result_dir = f'/root/autoencoder_denoiser/testing_real_imgs_results/{test_loader.dataset.data_folder_name}_{dir_name_to_save}/'
     os.makedirs(testing_result_dir, exist_ok= True)    
     displayed=0
-    display_num = 0
     loss = 0
     snr = 0
     snr_orig = 0
@@ -172,7 +132,7 @@ def test_thresholding(test_loader, threshold_value = 0.4, dir_name_to_save = "th
             name = "".join([chr(i) for i in name[0]])
             if len(raw.shape)==3:   
                 raw, noise = raw.unsqueeze(1), noise.unsqueeze(1)
-            prediction = torch.clone(raw)
+            prediction = torch.clone(noise)
             prediction[abs(prediction)<threshold_value]=0
         
         # find loss
@@ -200,43 +160,9 @@ def test_thresholding(test_loader, threshold_value = 0.4, dir_name_to_save = "th
             # print("?")
             # plt.clf()
 
-                ax = plt.subplot(2, 2, 1)
-                plt.tight_layout()
-                ax.set_title('original',fontsize=18)
-                # ax.axis('off')
-                plt.imshow(raw_pic[0].cpu(),cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
-                plt.colorbar()
-            
-                ax = plt.subplot(2, 2, 2)
-                plt.tight_layout()
-                ax.set_title('noise',fontsize=18)
-                # ax.axis('off')
-                plt.imshow(noise_pic[0].cpu(),cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
-                plt.colorbar()
-            
-                ax = plt.subplot(2, 2, 3)
-                plt.tight_layout()
-                ax.set_title('predicted',fontsize=18)
-                # ax.axis('off')
-                plt.imshow(prediction_pic[0].cpu(),cmap=custom_HSQC_cmap, vmax=1, vmin=-1)
-                plt.colorbar()
-            
-                ax = plt.subplot(2, 2, 4)
-                plt.tight_layout()
-                ax.set_title('difference', fontsize=18)
-                # ax.axis('off')
-            
-            # difference = prediction_pic[0].cpu()-raw_pic[0].cpu()
-            # difference = difference.float()/2 + 0.5
-            # print(difference)
-                difference = cv2.subtract(np.array(prediction_pic[0].cpu()), np.array(raw_pic[0].cpu()))
-                plt.imshow(difference, cmap = custom_diff_cmap, vmax=1, vmin=-1)
-            
-                plt.colorbar()
-                plt.savefig(f'{testing_result_dir}/result_{name}.png')
-                plt.clf()
-                plt.figure()
-                plt.close()
+                save_path = f'{testing_result_dir}/result_{name}.png'
+                display_pics(noise_pic[0].cpu(), prediction_pic[0].cpu(), raw_pic[0].cpu(), save_path=save_path)
+                
                 displayed = displayed+1
             
         loss /= len(test_loader.dataset)  
@@ -249,13 +175,19 @@ def test_thresholding(test_loader, threshold_value = 0.4, dir_name_to_save = "th
 
 
 
-# dann_test.config['dataset']['real_img_keep_size'] = True 
-test_loader = DataLoader(RealNoiseDataset_Byeol(dann_test.config,range_low=0,range_high=8, show_name=True),
-                         batch_size=1, shuffle=False, num_workers=8)
+match_hist_baseline_test = Test("match_hist")
+test_loader = DataLoader(RealNoiseDataset_Byeol(match_hist_baseline_test.config,range_low=0,range_high=100, show_name=True),
+                        batch_size=1, shuffle=False, num_workers=8)
+if __name__ == "__main__":
+    # my_model_test = Test("t1_03")
+    # paper_1d_test = Test("paper_1d")
+    # dann_test = Test('adv', threshold=True)
+    
+    # dann_test.config['dataset']['real_img_keep_size'] = True 
 
-test_thresholding(test_loader, threshold_value = 0.4 , dir_name_to_save="theshold_4_all")
- 
-# for iter, data in enumerate(test_loader):
-#     noise, raw,name = data
-#     print(iter)
-#     # print(noise.shape)
+    test_thresholding(test_loader, threshold_value = 0.9 , dir_name_to_save="theshold_9_all")
+    
+    # for iter, data in enumerate(test_loader):
+    #     noise, raw,name = data
+    #     print(iter)
+    #     # print(noise.shape)

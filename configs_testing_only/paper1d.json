@@ -1,0 +1,33 @@
+{
+    "experiment_name": "noise1",
+    "dataset": {
+      "shuffle": false,
+      "signal_upscale":1,
+      "noise_type": "t1",
+      "noise_factor": [0.1, 0.4],
+      "white_noise_rate":0.01,
+      "pre-filtered": false,
+      "batch_size": 32,
+      "tessellate": false,
+      "num_workers": 4,
+      "streak_prob": [0.1, 0.4],
+      "cross_prob": [0.1, 0.4],
+      "data_augment": 5,
+      "real_img_dataset_name": "Byeol",
+      "super_noisy": false,
+      "cleaned": false
+    },
+    "experiment": {
+      "num_epochs": 100,
+      "learning_rate": 5e-7,
+      "loss_func":"MSE",
+      "lr_step": 0,
+      "lr_scheduler_step": [30,80, 140, 200],
+      "lr_scheduler_type": "criterion"
+    },
+    "model": {
+        "model_type": "UNet",
+        "bilinear": true
+      }
+  }
+  

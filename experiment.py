@@ -614,7 +614,7 @@ def compute_SNR(raw, noisy_img):
 #     return denoised_wSNR/orig_wSNR
 
 def compute_metrics(raw, noise, prediction):
-    assert(raw.dim()==2)
+    # assert(raw.dim()==2)
     raw, noise, prediction = torch.abs(raw), torch.abs(noise), torch.abs(prediction)
     
     

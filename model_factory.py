@@ -25,13 +25,16 @@ def get_model(config):
     elif model_type == "UNet":
         print("model :UNet")
         output_channel = 3 if config["experiment"]["loss_func"] == "CrossEntropy" else 1
-        return UNet(1,output_channel,config['model']['bilinear'])
-    elif model_type == "JNet":
-        print ("model: JNet (for tessellation)")
-        return JNet(1,1,config['model']['bilinear'])
-    elif model_type == "UNet_2":
-        print ("model: Unet with low-resolution tessellation)")
-        return UNet(2,1,config['model']['bilinear'],skip_top_connection = config['model'].get('skip_top_connection') )
+        oneD = True if config['model'].get('dim')==1 else False
+        return UNet(1,output_channel,config['model']['bilinear'], oneD=oneD)
+    
+    # #### deprecated models ###
+    # elif model_type == "JNet":
+    #     print ("model: JNet (for tessellation)")
+    #     return JNet(1,1,config['model']['bilinear'])
+    # elif model_type == "UNet_2":
+    #     print ("model: Unet with low-resolution tessellation)")
+    #     return UNet(2,1,config['model']['bilinear'],skip_top_connection = config['model'].get('skip_top_connection') )
     elif model_type == "Adv_UNet":
         print ("model: Adv_Unet")
         softmaxed_output_size = config['model']['output_img_pooling_size'] if config['model']['CDAN'] else 1 
