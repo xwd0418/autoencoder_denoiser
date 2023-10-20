@@ -15,8 +15,7 @@
       "data_augment": 5,
       "real_img_dataset_name": "Byeol",
       "super_noisy": false,
-      "cleaned": false,
-      "absolute":false
+      "cleaned": false
     },
     "experiment": {
       "num_epochs": 100,
@@ -29,6 +28,8 @@
     "model": {
         "model_type": "UNet",
         "bilinear": true
-      }
+      },
+    "loading_path":null
+
   }
   

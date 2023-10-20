@@ -54,7 +54,6 @@ class HSQCDataset(Dataset):
         file_index = i//self.augment
 
         raw_sample = torch.load(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
-        print(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         # print(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         raw_sample = np.array(raw_sample, dtype="float32")
         raw_sample = raw_sample[0]
@@ -185,14 +184,8 @@ class RealNoiseDataset_Byeol(Dataset):
             self.data_folder_name = self.data_folder_name.replace("resized", "orig_size")
         self.real_img_data_dir = f'/root/autoencoder_denoiser/dataset/{self.data_folder_name}/'
         self.paths =  glob(self.real_img_data_dir+"*")
-        # print("self.real_img_data_dir", self.real_img_data_dir)
-        # print(len(self.paths))
-        # for path in self.paths:
-        #     print((path.split("_")[-1].split(".")[0]))
-        #     print(int(path.split("_")[-1].split(".")[0]))
         self.paths = [path for path in self.paths if 
                       range_low <= int(path.split("_")[-1].split(".")[0]) <= range_high]
-        # print(len(self.paths))
 
     def  __len__(self):
         return len(self.paths)
@@ -200,9 +193,12 @@ class RealNoiseDataset_Byeol(Dataset):
     def __getitem__(self, index):
         
         loaded_data = np.load(self.paths[index])
+        noise, ground_truth = loaded_data['noise'], loaded_data['ground_truth']
+        noise = cv2.resize(noise, (120, 180))
+        ground_truth = cv2.resize(ground_truth, (120, 180))
         if not self.show_name:
-            return (np.expand_dims(loaded_data['noise'],0), np.expand_dims(loaded_data['ground_truth'],0))
-        return (np.expand_dims(loaded_data['noise'],0), np.expand_dims(loaded_data['ground_truth'],0), loaded_data['name'])
+            return (np.expand_dims(noise,0), np.expand_dims(ground_truth,0))
+        return (np.expand_dims(noise,0), np.expand_dims(ground_truth,0), loaded_data['name'])
             
 # class MultiStageRealNoiseDataset(Dataset):
 #     def __init__(self, noise_level, split) -> None:

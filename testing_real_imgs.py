@@ -1,19 +1,22 @@
 import json
 import os
 import matplotlib.pyplot as plt
+"""
+This file is used to test a model across all real hsqc images
+    
+In other word, if a method uses real_images during supervised training, this file should not be used during testing. 
+Instead, it should use cross validation 
+"""
+
 import numpy as np
-from PIL import Image
 import json
-import cv2
-import matplotlib.image
 from glob import glob
 import torch
 from model_factory import get_model
-import argparse
 from model_factory import UNet
 from hsqc_dataset import *
 from tqdm import tqdm
-from utils import display_pics
+from utils import display_pics, compute_metrics
 
 """configurations"""
 device = torch.device("cuda:0")
@@ -22,10 +25,17 @@ config_path = f"/root/autoencoder_denoiser/configs_{version}"
 exp_dir = f'/root/autoencoder_denoiser/exps/results_{version}'
 
 class Test():
+    '''
+    a Test object, 
+    mainly to bind with a config json file and load model weights  
+    '''
     def __init__(self, model_name, 
                     config_path = config_path,
                     exp_dir = exp_dir,
                     threshold=None) -> None:
+        
+        # currently not use : dilation and resize
+        
         self.dilation = False
         self.resize = True
         self.config = None
@@ -61,14 +71,6 @@ criterion = torch.nn.MSELoss(reduction="sum")
                         #  batch_size=1, shuffle=False, num_workers=8)
 
 
-def compute_SNR(raw, noisy_img): 
-    signal_position= torch.where(raw!=0)
-    # noise_position= torch.where(raw==0)
-    # prediction_error = torch.sum( torch.abs(raw-noisy_img))
- 
-    avg_signal = torch.sum( torch.abs(raw))/len(signal_position[0])
-    noise_std =  torch.std(noisy_img - raw)
-    return (avg_signal/noise_std).item()
 
 def test(*model_tests):
     need_display = True
@@ -76,7 +78,7 @@ def test(*model_tests):
         displayed=0
         display_num = 0
         loss = 0
-        snr = 0
+        orig_SNR, denoised_SNR, SNR_incr = 0,0,0
         plt.rcParams["figure.figsize"] = (20,10)
         with torch.no_grad():
             for iter, data in enumerate(tqdm(test_loader)):
@@ -96,25 +98,23 @@ def test(*model_tests):
             # print(denoised_1.shape)
             # print(ground_truth.shape)
                 loss += criterion(prediction,ground_truth )
-                snr += compute_SNR(raw, prediction)
+                # updating orig_SNR, denoised_SNR, SNR_incr
+                orig_SNR, denoised_SNR, SNR_incr = [sum(x) for x in zip( (orig_SNR, denoised_SNR, SNR_incr) , \
+                                                                            compute_metrics(raw, noise, prediction))] 
             
                 if need_display and displayed<2:
-                    noise_pic , prediction_pic, raw_pic = noise[1],prediction[1], raw[1]
-                    
-                    # print("?")
-                    # plt.clf()
-
-                    # print(os.path.join(self._test_samples_path, f"sample_image{displayed}.png"))
-                    
+                    noise_pic , prediction_pic, raw_pic = noise[1],prediction[1], raw[1]                  
                     display_pics(noise_pic[0].cpu(), prediction_pic[0].cpu(), raw_pic[0].cpu())
                     displayed = displayed+1
             
                     
             loss /= len(test_loader.dataset)  
-            snr /=   len(test_loader.dataset)
+            orig_SNR /=   len(test_loader.dataset)
+            denoised_SNR /=   len(test_loader.dataset)
+            SNR_incr /=   len(test_loader.dataset)
             print("test loader size:" , len(test_loader.dataset))
             print(f"loss of model: {model_test.name} is {loss}")
-            print(f"snr of model: {model_test.name} is {snr}")
+            print(f"orig_SNR, denoised_SNR, SNR_incr of model: {model_test.name} is {orig_SNR, denoised_SNR, SNR_incr}")
 
 
     
@@ -123,8 +123,7 @@ def test_thresholding(test_loader, threshold_value = 0.4, dir_name_to_save = "th
     os.makedirs(testing_result_dir, exist_ok= True)    
     displayed=0
     loss = 0
-    snr = 0
-    snr_orig = 0
+    orig_SNR, denoised_SNR, SNR_incr = 0,0,0
     with torch.no_grad():
         for iter, data in enumerate(tqdm(test_loader)):
             # if iter==1: break
@@ -133,25 +132,14 @@ def test_thresholding(test_loader, threshold_value = 0.4, dir_name_to_save = "th
             if len(raw.shape)==3:   
                 raw, noise = raw.unsqueeze(1), noise.unsqueeze(1)
             prediction = torch.clone(noise)
-            prediction[abs(prediction)<threshold_value]=0
-        
-        # find loss
-        # prediction = prediction.type(torch.float32)
+            prediction[abs(prediction)<threshold_value]=0        
             ground_truth = raw
-    
-        # add adv loss !!!
             prediction = torch.clip(prediction,-1,1)
 
-    # print(denoised_1.shape)
-    # print(ground_truth.shape)
-            # print (prediction.size())
-            # print(ground_truth.size())
-            # if prediction.shape!=ground_truth.shape:
-            #     print(ground_truth.shape)
-            #     exit()
             loss += criterion(prediction,ground_truth )
-            snr += compute_SNR(raw, prediction)
-            snr_orig += compute_SNR(raw, noise)
+            # updating orig_SNR, denoised_SNR, SNR_incr
+            orig_SNR, denoised_SNR, SNR_incr = [sum(x) for x in zip( (orig_SNR, denoised_SNR, SNR_incr ), \
+                                                                     compute_metrics(raw, noise, prediction))] 
     
         # if need_display and displayed<2:
             if True:
@@ -166,12 +154,13 @@ def test_thresholding(test_loader, threshold_value = 0.4, dir_name_to_save = "th
                 displayed = displayed+1
             
         loss /= len(test_loader.dataset)  
-        snr /=   len(test_loader.dataset)
-        snr_orig /=   len(test_loader.dataset)
+        orig_SNR /=   len(test_loader.dataset)
+        denoised_SNR /=   len(test_loader.dataset)
+        SNR_incr /=   len(test_loader.dataset)
 
         print("test loader size:" , len(test_loader.dataset))
-        print(f"loss of model: thresholding is {loss}")
-        print(f"snr of model: thresholding is {snr}")
+        print(f"loss of thresholding is {loss}")
+        print(f"orig_SNR, denoised_SNR, SNR_incr of thresholding is {orig_SNR, denoised_SNR, SNR_incr}")
 
 
 

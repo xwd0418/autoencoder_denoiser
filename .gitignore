@@ -31,3 +31,4 @@ previous_paper_denoise/
 
 !configs_bitmap
 !dataset/*.ipynb
+db.*

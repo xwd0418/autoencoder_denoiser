@@ -14,6 +14,9 @@ import shutil
 import matplotlib.image
 from sklearn.metrics import f1_score, average_precision_score, recall_score
 from torch.utils.tensorboard import SummaryWriter
+from utils import display_pics,Metric
+
+
 
 PRINT_TIME = False
 
@@ -50,11 +53,7 @@ class Experiment(object):
         os.makedirs(self._test_samples_path, exist_ok=True)
         self._val_samples_path = self.__experiment_dir+"/val_sample_imgs"
         os.makedirs(self._val_samples_path, exist_ok=True)
-        clist = [(0,"green"), (0.5,"white"), (1, "red")]
-        self.custom_diff_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",clist)
-        clist = [(0,"darkblue"), (0.5,"white"), (1, "darkred")]
-        self.custom_HSQC_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",clist)
-
+       
         # Load Datasets
         self.__train_loader, self.__val_loader, self.__test_loader = get_datasets(config)
         if config['model']['model_type'] == "Adv_UNet":
@@ -364,37 +363,14 @@ class Experiment(object):
                 #draw sample pics
                 # if self.__current_epoch% 15 ==0 and iter==0:
         if iter==0:
-            if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
-                noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
-            else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
+
+            noise_pic , prediction_pic, raw_pic = noise,prediction, raw
             if self.config["experiment"]["loss_func"] == "CrossEntropy":
                 prediction_pic = prediction
-                 
-            plt.clf()
 
-            ax = plt.subplot(1, 3, 1)
-            plt.tight_layout()
-            ax.set_title('orig')
-            # ax.axis('off')
-            plt.imshow(raw_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-            ax = plt.subplot(1, 3, 2)
-            plt.tight_layout()
-            ax.set_title('noise')
-            # ax.axis('off')
-            plt.imshow(noise_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-            ax = plt.subplot(1, 3, 3)
-            plt.tight_layout()
-            ax.set_title('predicted')
-            # ax.axis('off')
-
-            plt.imshow(prediction_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-                    # print(os.path.join(self._val_samples_path, "epoch_{}_sample_images.png".format(str(self.__current_epoch))))
-            plt.savefig(os.path.join(self._val_samples_path,f"epoch_{str(self.__current_epoch)}_{type}_images.png"))
-            displayed = True
-            plt.clf()
+            save_path = os.path.join(self._val_samples_path,f"epoch_{str(self.__current_epoch)}_{type}_images.png")
+          
+            display_pics(noise[0,0].cpu(), prediction[0,0].cpu(), ground_truth[0,0].cpu(), save_path=save_path)
         
         return loss.item() 
 
@@ -465,42 +441,9 @@ class Experiment(object):
             if self.config["model"]['model_type'] == "JNet":
                 noise_pic = noise_pic[0]
                     
-            plt.clf()
-
-            ax = plt.subplot(2, 2, 1)
-            plt.tight_layout()
-            ax.set_title('original')
-            # ax.axis('off')
-            plt.imshow(raw_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-            ax = plt.subplot(2, 2, 2)
-            plt.tight_layout()
-            ax.set_title('noise')
-            # ax.axis('off')
-            plt.imshow(noise_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-
-            ax = plt.subplot(2, 2, 3)
-            plt.tight_layout()
-            ax.set_title('predicted')
-            # ax.axis('off')
-            plt.imshow(prediction_pic[0].cpu(),cmap=self.custom_HSQC_cmap, vmax=1, vmin=-1)
-                    
-            ax = plt.subplot(2, 2, 4)
-            plt.tight_layout()
-            ax.set_title('difference')
-            # ax.axis('off')
-                    
-                    # difference = prediction_pic[0].cpu()-raw_pic[0].cpu()
-                    # difference = difference.float()/2 + 0.5
-                    # print(difference)
-            # print("prediction_pic.dtype: ", prediction_pic.dtype, "ground_truth.dtype: ", ground_truth.dtype)            
-            difference = cv2.subtract(np.array(prediction_pic[0].cpu()), np.array(raw_pic[0].cpu()))
-            plt.imshow(difference, cmap = self.custom_diff_cmap, vmax=1, vmin=-1)
-
-                    # print(os.path.join(self._test_samples_path, f"sample_image{displayed}.png"))
-            plt.savefig(os.path.join(self._test_samples_path, f"{type}_image{displayed_num}.png"))
+            save_path = os.path.join(self._test_samples_path, f"{type}_image{displayed_num}.png")
+            display_pics(noise[0,0].cpu(), prediction[0,0].cpu(), ground_truth[0,0].cpu(), save_path=save_path)
             
-            plt.clf()
         return loss    
 
 
@@ -550,108 +493,3 @@ def loop_iterable(iterable):
             # yield i
         yield from iterable
         
-
-
-# SNR helper:
-
-class Metric():
-    
-    def init(self):
-        self.reset()
-        
-    def reset(self):
-        self.snr_orig  = 0
-        self.snr_denoised = 0
-        self.snr_inc  = 0
-        self.wsnr_orig = 0
-        self.wsnr_denoised = 0
-        self.wsnr_inc  = 0
-    
-    def update(self, raw, noise, prediction):
-        #  , orig_wSNR, denoised_wSNR,wSNR_inc
-        orig_SNR, denoised_SNR,  SNR_inc = \
-                    compute_metrics(torch.squeeze(raw,0), torch.squeeze(noise,0),torch.squeeze(prediction,0))
-                    # compute_metrics(torch.squeeze(raw,0), torch.squeeze(noise,0),torch.squeeze(prediction,0), raw_noise_threadshold = 0, topk_k=3)
-        self.snr_orig  += orig_SNR
-        self.snr_denoised += denoised_SNR
-        self.snr_inc += SNR_inc
-        # self.wsnr_orig += orig_wSNR
-        # self.wsnr_denoised += denoised_wSNR
-        # self.wsnr_inc  += wSNR_inc
-        
-    def write(self, writer, mode, curr_iter):
-        writer.add_scalar(f'{mode}/SNR_orig', self.snr_orig, curr_iter) 
-        writer.add_scalar(f'{mode}/SNR_denoised', self.snr_denoised, curr_iter) 
-        writer.add_scalar(f'{mode}/SNR_inc', self.snr_inc, curr_iter) 
-        # writer.add_scalar(f'{mode}/wSNR_orig', self.wsnr_orig, curr_iter) 
-        # writer.add_scalar(f'{mode}/wSNR_denoised', self.wsnr_denoised, curr_iter) 
-        # writer.add_scalar(f'{mode}/wSNR_inc', self.wsnr_inc, curr_iter) 
-        
-    def avg(self, total_num):
-        self.snr_orig  /= total_num
-        self.snr_denoised /= total_num
-        self.snr_inc  /= total_num
-        # self.wsnr_orig /= total_num
-        # self.wsnr_denoised /= total_num
-        # self.wsnr_inc  /= total_num
-
-
-
-
-def compute_SNR(raw, noisy_img): 
-    signal_position= torch.where(raw!=0)
-    # noise_position= torch.where(raw==0)
-    # prediction_error = torch.sum( torch.abs(raw-noisy_img))
- 
-    avg_signal = torch.sum( torch.abs(raw))/len(signal_position[0])
-    noise_std =  torch.std(noisy_img - raw)
-    return (avg_signal/noise_std).item()
-
-
-# def wSNR_increase(raw, noise, prediction):
-#     orig_wSNR = compute_wSNR(raw, noise)
-#     denoised_wSNR = compute_wSNR(raw, prediction)
-#     return denoised_wSNR/orig_wSNR
-
-def compute_metrics(raw, noise, prediction):
-    # assert(raw.dim()==2)
-    raw, noise, prediction = torch.abs(raw), torch.abs(noise), torch.abs(prediction)
-    
-    
-    orig_SNR = compute_SNR(raw, noise)
-    denoised_SNR = compute_SNR(raw, prediction)
-    # orig_wSNR = compute_wSNR(raw, noise)
-    # denoised_wSNR = compute_wSNR(raw, prediction)
-    SNR_inc = denoised_SNR/orig_SNR
-    # wSNR_inc = denoised_wSNR/orig_wSNR
-    
-    return orig_SNR, denoised_SNR, SNR_inc #, orig_wSNR, denoised_wSNR,  wSNR_inc
-
-
-    
-
-    
-# def compute_metrics(raw, noise, prediction, raw_noise_threadshold=0.05, topk_k = 4):
-#     noise_position= torch.where(raw<=raw_noise_threadshold)
-#     signal_position= torch.where(raw>raw_noise_threadshold)
-#     topk_k=min(topk_k,len(signal_position[0]) )
-    
-    
-#     orig_SNR = torch.max(noise)/torch.std(noise[noise_position])
-    
-#     # print("torch std",torch.std(prediction[noise_position]), prediction[noise_position])
-#     noised_std = max(torch.std(prediction[noise_position]).item(), 0.00001)
-#     denoised_SNR = torch.max(prediction)/noised_std
-    
-#     # print("noise", noised_std, "snr", denoised_SNR)
-#     # print("prediction's noise:",torch.max(prediction[noise_position]) )
-#     # print("torch.std(prediction[noise_position])", torch.std(prediction[noise_position]))
-#     SNR_inc = denoised_SNR/orig_SNR
-    
-#     orig_wSNR = torch.mean(torch.topk(noise[signal_position], k=topk_k, largest=False).values.clip_(0,1)) /torch.std(noise[noise_position])
-#     denoised_wSNR = torch.mean(torch.topk(torch.where(prediction.double()>0.0, prediction.double(), 99.9), k=topk_k, largest=False).values)/noised_std
-#     # print(torch.topk(torch.where(prediction.double()>0.0, prediction.double(), 99.9), k=4, largest=False).values, noised_std)
-#     wSNR_inc = denoised_wSNR/orig_wSNR
-    
-#     # print(orig_SNR, denoised_SNR, orig_wSNR, denoised_wSNR, SNR_inc, wSNR_inc)
-#     return orig_SNR.item(), denoised_SNR.item(), orig_wSNR.item(), denoised_wSNR.item(), SNR_inc.item(), wSNR_inc.item()
