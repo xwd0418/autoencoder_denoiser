@@ -221,9 +221,14 @@ def get_datasets(config):
     num_workers = 0 if DEBUG else 16
     shuffle=config["dataset"]['shuffle']
     batch = config["dataset"]['batch_size']
-    train_loader = DataLoader(HSQCDataset("train", config), batch_size=batch, shuffle=shuffle, num_workers=num_workers)
-    val_loader = DataLoader(HSQCDataset("val",config), batch_size=batch, shuffle=shuffle, num_workers=num_workers)
-    test_loader = DataLoader(HSQCDataset("test",config), batch_size=batch, shuffle=shuffle, num_workers=num_workers)
+    pin_mem = False
+    persistent_workers = True
+    train_loader = DataLoader(HSQCDataset("train", config), batch_size=batch, shuffle=shuffle, num_workers=num_workers,
+                              pin_memory=pin_mem, persistent_workers=persistent_workers)
+    val_loader = DataLoader(HSQCDataset("val",config), batch_size=batch, shuffle=shuffle, num_workers=num_workers,
+                              pin_memory=pin_mem, persistent_workers=persistent_workers)
+    test_loader = DataLoader(HSQCDataset("test",config), batch_size=batch, shuffle=shuffle, num_workers=num_workers,
+                              pin_memory=pin_mem, persistent_workers=persistent_workers)
     return train_loader, val_loader , test_loader
 
 def get_real_img_dataset(config):

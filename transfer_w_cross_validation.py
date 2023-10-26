@@ -33,7 +33,10 @@ class CrossValidateDataset(Dataset):
 
     def __getitem__(self, index):
         loaded_data = np.load(self.paths[index])
-        return np.expand_dims(loaded_data['noise'], 0),  np.expand_dims(loaded_data['ground_truth'], 0)
+        noise, ground_truth = loaded_data['noise'], loaded_data['ground_truth']
+        noise = cv2.resize(noise, (120, 180))
+        ground_truth = cv2.resize(ground_truth, (120, 180))
+        return np.expand_dims(noise, 0),  np.expand_dims(ground_truth, 0)
 
 
 class DenoiseExp(object):
@@ -44,6 +47,7 @@ class DenoiseExp(object):
         self.config = config
 
         self.__experiment_dir = '/root/autoencoder_denoiser/exps/cross_validation/'+name
+        os.system(f'rm -r {self.__experiment_dir}')
         self.device = torch.device("cuda:0")
         self.__criterion = torch.nn.MSELoss()
         self.__criterion = self.__criterion.cuda()
@@ -81,12 +85,16 @@ class DenoiseExp(object):
             test_partition = dataset[nighty_percent:]
             batch_size = self.config['dataset']['batch_size']
             print("training data amount: ", len(train_partition))
-            train_loader = DataLoader(CrossValidateDataset(
-                train_partition), batch_size=batch_size, shuffle=True)
-            val_loader = DataLoader(CrossValidateDataset(
-                val_partition), batch_size=batch_size, shuffle=True)
-            test_loader = DataLoader(CrossValidateDataset(
-                test_partition), batch_size=batch_size, shuffle=True)
+            train_loader = DataLoader(CrossValidateDataset( train_partition), batch_size=batch_size, shuffle=True,
+                                      persistent_workers=True,  num_workers=16, pin_memory = True
+                                      )
+            print('finishing preparing train loader')
+            val_loader = DataLoader(CrossValidateDataset(val_partition), batch_size=batch_size, shuffle=True,
+                                    persistent_workers=True,  num_workers=16, pin_memory = True
+                                      )
+            test_loader = DataLoader(CrossValidateDataset(test_partition), batch_size=batch_size, shuffle=True,
+                                     persistent_workers=True,  num_workers=16, pin_memory = True
+                                      )
             yield train_loader, val_loader, test_loader
             split_point = len(dataset)//k
             dataset = dataset[split_point:]+dataset[:split_point]
@@ -99,6 +107,7 @@ class DenoiseExp(object):
             # init model
             self.__model = get_model(self.config)
             self.__model = torch.nn.DataParallel(self.__model)
+            print('moving model to cuda')
             if torch.cuda.is_available():
                 self.__model = self.__model.cuda().float()
             self.load_model(self.config['loading_path'])
@@ -131,6 +140,7 @@ class DenoiseExp(object):
 
                 # train
                 for iter, data in enumerate((train_loader)):
+                    # print(f"training {iter}")
                     noise, ground_truth = data
                     ground_truth, noise = ground_truth, noise
                     ground_truth, noise = ground_truth.to(
@@ -200,8 +210,8 @@ if len(sys.argv) > 1:
     name = sys.argv[1]
 else:
     # default name
-    name = "plain_cross_valid"
-
+    name = "??"
+os.system('nvidia-smi -L')
 seed = 3405
 np.random.seed(seed)
 random.seed(seed)

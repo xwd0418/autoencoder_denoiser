@@ -75,6 +75,8 @@ criterion = torch.nn.MSELoss(reduction="sum")
 def test(*model_tests):
     need_display = True
     for model_test in model_tests:
+        testing_result_dir = f'/root/autoencoder_denoiser/testing_real_imgs_results/{model_test.name}/'
+        os.makedirs(testing_result_dir, exist_ok= True)   
         displayed=0
         display_num = 0
         loss = 0
@@ -82,7 +84,8 @@ def test(*model_tests):
         plt.rcParams["figure.figsize"] = (20,10)
         with torch.no_grad():
             for iter, data in enumerate(tqdm(test_loader)):
-                noise, raw = data
+                # print(data)
+                noise, raw, name = data
                 if len(raw.shape)==3:   
                     raw, noise = raw.unsqueeze(1), noise.unsqueeze(1)
                 raw, noise = raw.to(device).float(), noise.to(device).float()
@@ -102,9 +105,11 @@ def test(*model_tests):
                 orig_SNR, denoised_SNR, SNR_incr = [sum(x) for x in zip( (orig_SNR, denoised_SNR, SNR_incr) , \
                                                                             compute_metrics(raw, noise, prediction))] 
             
-                if need_display and displayed<2:
-                    noise_pic , prediction_pic, raw_pic = noise[1],prediction[1], raw[1]                  
-                    display_pics(noise_pic[0].cpu(), prediction_pic[0].cpu(), raw_pic[0].cpu())
+                if need_display and displayed<5:
+                    noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]          
+                    save_path = testing_result_dir+f"{iter}.png"
+                    print(save_path)
+                    display_pics(noise_pic[0].cpu(), prediction_pic[0].cpu(), raw_pic[0].cpu(),save_path=save_path)
                     displayed = displayed+1
             
                     
@@ -174,9 +179,7 @@ if __name__ == "__main__":
     
     # dann_test.config['dataset']['real_img_keep_size'] = True 
 
-    test_thresholding(test_loader, threshold_value = 0.9 , dir_name_to_save="theshold_9_all")
+    # test_thresholding(test_loader, threshold_value = 0.9 , dir_name_to_save="theshold_9_all")
     
-    # for iter, data in enumerate(test_loader):
-    #     noise, raw,name = data
-    #     print(iter)
-    #     # print(noise.shape)
+    my_model_test = Test("paper_1d")
+    test(my_model_test)

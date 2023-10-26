@@ -1,21 +1,10 @@
 {
     "experiment_name": "noise1",
     "dataset": {
-      "shuffle": false,
-      "signal_upscale":1,
-      "noise_type": "t1",
-      "noise_factor": [0.1, 0.4],
-      "pre-filtered": false,
-      "batch_size": 32,
-      "tessellate": false,
-      "num_workers": 4,
-      "streak_prob": [0.1, 0.4],
-      "cross_prob": [0.1, 0.4],
-      "data_augment": 5,
       "real_img_dataset_name": "Byeol",
       "super_noisy": false,
       "cleaned": false,
-      "absolute":false
+      "batch_size": 32
     },
     "experiment": {
       "num_epochs": 100,
@@ -28,6 +17,8 @@
     "model": {
         "model_type": "UNet",
         "bilinear": true
-      }
+      },
+    "loading_path":"/root/autoencoder_denoiser/exps/results_bitmap/match_hist/latest_model.pt"
+
   }
   
