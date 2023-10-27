@@ -43,6 +43,7 @@ class HSQCDataset(Dataset):
         # assert (len(self.FP_files ) == (self.HSQC_files))
 
     def __len__(self): 
+        # return 1500
         if self.config.get("DEBUG"): 
             return 50
         return len(self.hsqc_files)*self.augment
@@ -57,6 +58,16 @@ class HSQCDataset(Dataset):
         # print(os.path.join(self.dir,  self.split, self.hsqc_path, self.hsqc_files[file_index]))
         raw_sample = np.array(raw_sample, dtype="float32")
         raw_sample = raw_sample[0]
+        
+        upscale_factor = self.config['dataset'].get('signal_upscale')
+        if upscale_factor!=None:
+            # upscaled_shape = (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor)
+            # raw_sample = cv2.resize(raw_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
+            # noisy_sample = cv2.resize(noisy_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
+            raw_sample = np.repeat(raw_sample, upscale_factor, axis=0)
+            raw_sample = np.repeat(raw_sample, upscale_factor, axis=1)
+           
+            
         signal_enhance_factor =  self.config['dataset'].get('signal_enhance')
         if signal_enhance_factor:
             raw_sample = np.sign(raw_sample) * (np.abs(raw_sample)) ** signal_enhance_factor
@@ -108,37 +119,10 @@ class HSQCDataset(Dataset):
         if self.config["dataset"]["pre-filtered"]:
             noisy_sample = np.array([[[filtering(float(k)) for k in j] for j in i] for i in noisy_sample])
         
-        # if self.config["dataset"]["tessellate"]:
-            
-        #     selected_noisy_sample = np.array([[[selecting(float(k)) for k in j] for j in i] for i in noisy_sample])
-        #     tessellated_noise = triangle_tessellate( selected_noisy_sample[0], self.config["dataset"]["upscale"])
-        #     tessellated_noise = np.expand_dims(tessellated_noise, axis=0)
-        #     # tessellated_noise = np.expand_dims(tessellated_noise, axis=0)
-        #     # noisy_sample = np.stack((expand(noisy_sample), tessellated_noise), axis=0)
-            
-        #     ### using low resolution of tessellation 
-        #     if self.config['model']['model_type'] == "UNet_2": 
-        #         concat = np.concatenate((noisy_sample, tessellated_noise))    
-        #         if self.config['dataset']['absolute']:
-        #             raw_sample,concat = np.abs(raw_sample), np.abs(concat)            
-        #         return raw_sample, concat
-        #     ### using Jnet 
-        #     else:
-        #         if self.config['dataset']['absolute']:
-        #             raw_sample, noisy_sample, tessellated_noise = np.abs(raw_sample), np.abs(noisy_sample), np.abs(tessellated_noise)
-        #         return raw_sample, (noisy_sample, tessellated_noise)
         if self.config['dataset']['absolute']:
             raw_sample, noisy_sample = np.abs(raw_sample), np.abs(noisy_sample)
             
-        upscale_factor = self.config['dataset'].get('signal_upscale')
-        if upscale_factor!=None:
-            # upscaled_shape = (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor)
-            # raw_sample = cv2.resize(raw_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
-            # noisy_sample = cv2.resize(noisy_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
-            raw_sample = np.repeat(raw_sample, upscale_factor, axis=1)
-            raw_sample = np.repeat(raw_sample, upscale_factor, axis=2)
-            noisy_sample =  np.repeat(noisy_sample, upscale_factor, axis=1)
-            noisy_sample =  np.repeat(noisy_sample, upscale_factor, axis=2)
+      
         return raw_sample, noisy_sample
     
 
@@ -170,6 +154,7 @@ class RealNoiseDataset_Byeol(Dataset):
                  ) -> None:
         super().__init__() 
         self.show_name = show_name
+        self.config = config
         if config['dataset']['super_noisy']:          
             self.data_folder_name = "resized_super_noisy_1"
             print("using Byeol's real imgs: super noisy")
@@ -194,8 +179,10 @@ class RealNoiseDataset_Byeol(Dataset):
         
         loaded_data = np.load(self.paths[index])
         noise, ground_truth = loaded_data['noise'], loaded_data['ground_truth']
-        noise = cv2.resize(noise, (120, 180))
-        ground_truth = cv2.resize(ground_truth, (120, 180))
+        # noise = cv2.resize(noise, (120, 180))
+        # ground_truth = cv2.resize(ground_truth, (120, 180))
+        if self.config['dataset']['absolute']:
+            noise, ground_truth = np.abs(noise), np.abs(ground_truth)
         if not self.show_name:
             return (np.expand_dims(noise,0), np.expand_dims(ground_truth,0))
         return (np.expand_dims(noise,0), np.expand_dims(ground_truth,0), loaded_data['name'])
@@ -221,8 +208,8 @@ def get_datasets(config):
     num_workers = 0 if DEBUG else 16
     shuffle=config["dataset"]['shuffle']
     batch = config["dataset"]['batch_size']
-    pin_mem = False
-    persistent_workers = True
+    pin_mem = True
+    persistent_workers = False
     train_loader = DataLoader(HSQCDataset("train", config), batch_size=batch, shuffle=shuffle, num_workers=num_workers,
                               pin_memory=pin_mem, persistent_workers=persistent_workers)
     val_loader = DataLoader(HSQCDataset("val",config), batch_size=batch, shuffle=shuffle, num_workers=num_workers,

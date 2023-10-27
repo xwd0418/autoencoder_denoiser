@@ -25,8 +25,7 @@ os.system('nvidia-smi -L')
 
 
 class Experiment(object):
-    def __init__(self, name):
-        experiment_version = 'bitmap'
+    def __init__(self, experiment_version, name):
         f = open(f'/root/autoencoder_denoiser/configs_{experiment_version}/'+ name + '.json')
         # f = open(f'/root/autoencoder_denoiser/configs_baseline_selection/'+ name + '.json')
         # global config
@@ -107,10 +106,12 @@ class Experiment(object):
             self.__criterion = torch.nn.MSELoss()
         elif config["experiment"]["loss_func"] == "CrossEntropy":
             self.__criterion = torch.nn.CrossEntropyLoss() # edited
+        elif config["experiment"]["loss_func"] == "BCE":
+            self.__criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([self.config['experiment']['BCE_pos_weight']])) # edited
         else:
             raise Exception("what is your loss function??")
         
-        self.__optimizer = torch.optim.Adam(self.__model.parameters(), lr = self.__learning_rate) # edited
+        self.__optimizer = torch.optim.AdamW(self.__model.parameters(), lr = self.__learning_rate) # edited
 
         # add scheduler
         
@@ -189,8 +190,6 @@ class Experiment(object):
                     self.__lr_scheduler.step(val_loss)
                 else: 
                     self.__lr_scheduler.step()
-        # self.plot_stats()
-
 
     def __train(self):
         self.__model.train()
@@ -207,23 +206,7 @@ class Experiment(object):
             self.curr_iter += 1 
             raw, noise = self.__move_to_cuda(data)
             if self.config['model']['model_type'] == "Adv_UNet":
-                # if self.config['dataset']['real_img_dataset_name']=="Chen":
-                #     real_img = next(self.__batch_iterator).unsqueeze(1)
-                # if self.config['dataset']['real_img_dataset_name']=="Byeol":
-                #     end_index = self.real_img_index+self.config["dataset"]['batch_size']
-                #     if end_index>len(self.__real_imgs):
-                #         real_img = self.__real_imgs[self.real_img_index:]
-                #         self.real_img_index = end_index-len(self.__real_imgs)
-                #         real_img += self.__real_imgs[:self.real_img_index]                                    
-                #     else:
-                #         real_img = self.__real_imgs[self.real_img_index:end_index]
-                #         self.real_img_index=end_index
-                #     real_img = np.stack(real_img)
-                #     real_img = torch.tensor(real_img).unsqueeze(1)
-                 
-                # for kk in self.real_img_loader:
-                #     print(kk)
-                #     pass   
+  
                 real_img = next(self.__real_img_batch_iterator)[0]
                 if real_img.shape[0]< torch.cuda.device_count() :
                     real_img = torch.cat((real_img, next(self.__real_img_batch_iterator)[0].unsqueeze(1)))
@@ -241,13 +224,16 @@ class Experiment(object):
                 prediction = self.__model.forward(noise)
             # prediction = prediction.type(torch.float32)
             # print(prediction.shape, raw.shape)
-            ground_truth = raw
             if self.config["experiment"]["loss_func"] == "CrossEntropy":
-                ground_truth = self.threshould_for_display(raw)
-                
-            loss = self.__criterion(prediction, ground_truth )
-            
-            # print("MSE loss is: ", loss)
+                ground_truth = self.threshold_for_display(raw)
+            elif self.config["experiment"]["loss_func"] == "BCE":
+                ground_truth = torch.where(raw > 0, 1.0, 0.0)
+                # print()
+            else:
+                ground_truth = raw
+                    
+            loss = self.__criterion(prediction, ground_truth )            
+            # print("training MSE loss is: ", loss)
             
             if self.config['model']['model_type'] == "Adv_UNet":
                 # break
@@ -264,20 +250,25 @@ class Experiment(object):
              
                 # print('total loss is: ', loss)
             #     pass
-            prediction = torch.clip(prediction,0,1)
+            if self.config["experiment"]["loss_func"] == "CrossEntropy":
+                prediction = self.threshold_for_display(prediction)
+            elif self.config["experiment"]["loss_func"] == "BCE":
+                prediction = torch.where(prediction > 0, 1.0, 0.0)
+            else:
+                prediction = torch.clip(prediction,-1,1)
             with torch.no_grad():
                 for i in range(len(raw)):
                     self.__train_metric.update(raw[i].detach(), noise[i].detach(), prediction[i].detach())
                     
-            self.writer.add_scalar(f'train/loss', loss, self.curr_iter)        
-            # losses += loss.item()
-            self.__train_metric.avg(iter+1) # divided by batch_size
-            self.__train_metric.write(self.writer, "train", self.curr_iter)
-            
+                self.writer.add_scalar(f'train/loss', loss, self.curr_iter)        
+                # losses += loss.item()
+                self.__train_metric.avg(iter+1) # divided by batch_size
+                self.__train_metric.write(self.writer, "train", self.curr_iter)
+                
             loss.backward()
             self.__optimizer.step()
 
-    def threshould_for_display(self, raw_img, threshold = 0.1):
+    def threshold_for_display(self, raw_img, threshold = 0.1):
         out_img = raw_img.detach().clone()
         shape = out_img.shape
         out_img = out_img.view((-1, shape[-2], shape[-1])) # to shape of batch*height*width (no channels)
@@ -344,30 +335,28 @@ class Experiment(object):
 
     def val_step(self, iter, raw, noise,prediction, type = "synthesis"):
                 
-                # find loss
-                # prediction = prediction.type(torch.float32)
-        
+        # modify ground  truth to compute loss
         if self.config["experiment"]["loss_func"] == "CrossEntropy":
-            ground_truth = self.threshould_for_display(raw)
-            loss=self.__criterion(prediction,ground_truth )
-            # modify in order to plot
+            ground_truth = self.threshold_for_display(raw)
+        elif self.config["experiment"]["loss_func"] == "BCE":
+            ground_truth = torch.where(raw > 0, 1.0, 0.0)
+        else:
+            ground_truth = raw
+        loss=self.__criterion(prediction,ground_truth )
+          
+        # modify in order to plot
+        if self.config["experiment"]["loss_func"] == "CrossEntropy":
+            prediction = self.threshold_for_display(prediction)
             prediction = torch.argmax(prediction, dim=1)
             prediction = prediction - 1 
-        else: 
-            ground_truth = raw
+        elif self.config["experiment"]["loss_func"] == "BCE":
+            prediction = torch.where(prediction > 0, 1.0, 0.0)
+            # print(prediction)
+        else:
             prediction = torch.clip(prediction,-1,1)
-            loss=self.__criterion(prediction,ground_truth )
-        
-        
-                # add adv loss !!!                    
-                #draw sample pics
-                # if self.__current_epoch% 15 ==0 and iter==0:
+ 
+    
         if iter==0:
-
-            noise_pic , prediction_pic, raw_pic = noise,prediction, raw
-            if self.config["experiment"]["loss_func"] == "CrossEntropy":
-                prediction_pic = prediction
-
             save_path = os.path.join(self._val_samples_path,f"epoch_{str(self.__current_epoch)}_{type}_images.png")
           
             display_pics(noise[0,0].cpu(), prediction[0,0].cpu(), ground_truth[0,0].cpu(), save_path=save_path)
@@ -418,29 +407,28 @@ class Experiment(object):
     def test_step(self, displayed_num, raw, noise, prediction, type = "synthesis"): 
         
         
+        # modify ground  truth to compute loss
         if self.config["experiment"]["loss_func"] == "CrossEntropy":
-            ground_truth = self.threshould_for_display(raw)
-            loss=self.__criterion(prediction,ground_truth )
-            # modify in order to plot
+            ground_truth = self.threshold_for_display(raw)
+        elif self.config["experiment"]["loss_func"] == "BCE":
+            ground_truth = torch.where(raw > 0, 1.0, 0.0)
+        else:
+            ground_truth = raw
+        loss=self.__criterion(prediction,ground_truth )
+          
+        # modify in order to plot
+        if self.config["experiment"]["loss_func"] == "CrossEntropy":
+            prediction = self.threshold_for_display(prediction)
             prediction = torch.argmax(prediction, dim=1)
             prediction = prediction - 1 
-        else: 
-            ground_truth = raw
+        elif self.config["experiment"]["loss_func"] == "BCE":
+            prediction = torch.where(prediction > 0, 1.0, 0.0)
+        else:
             prediction = torch.clip(prediction,-1,1)
-            loss=self.__criterion(prediction,ground_truth )
         
 
 
         if displayed_num<20:
-            if self.config['model']['model_type'] != 'filter' and self.config['model']['model_type'] != 'vanilla':
-                noise_pic , prediction_pic, raw_pic = noise[0],prediction[0], raw[0]
-            else: noise_pic , prediction_pic, raw_pic = noise,prediction, raw
-            if self.config["experiment"]["loss_func"] == "CrossEntropy":
-                prediction_pic = prediction
-                    
-            if self.config["model"]['model_type'] == "JNet":
-                noise_pic = noise_pic[0]
-                    
             save_path = os.path.join(self._test_samples_path, f"{type}_image{displayed_num}.png")
             display_pics(noise[0,0].cpu(), prediction[0,0].cpu(), ground_truth[0,0].cpu(), save_path=save_path)
             

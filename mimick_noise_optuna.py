@@ -11,9 +11,9 @@ f = open('/root/autoencoder_denoiser/configs_bitmap/match_hist.json')
 config = json.load(f)
 
 config["dataset"]['batch_size'] = 1
-EDGE_SIZE = 4
-xedges = list(range(0,180+1,EDGE_SIZE))
-yedges = list(range(0,120+1,EDGE_SIZE))
+EDGE_SIZE = 5
+xedges = list(range(0,360+1,EDGE_SIZE))
+yedges = list(range(0,360+1,EDGE_SIZE))
 
 real_img_loader = get_real_img_dataset(config)
 all_2d_hists= []
@@ -81,7 +81,7 @@ def objective(trial):
 if __name__ == "__main__":
     study = optuna.create_study(
         storage='postgresql+psycopg2://testUser:testPassword@10.244.52.139:5432/testDB',  # Specify the storage URL here.
-        study_name="mimicking-noise-weighted-by-peak-heights",
+        study_name="mimicking-noise-upscaled",
         load_if_exists = True
     )
     study.optimize(objective, n_trials=100)

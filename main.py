@@ -13,10 +13,13 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-    if len(sys.argv) > 1:
-        exp_name = sys.argv[1]
+    if len(sys.argv) > 2:
+        exp_folder = sys.argv[1]
+        exp_name = sys.argv[2]
+    else:
+        raise Exception(" missing sys args")
 
     print("Running Experiment: ", exp_name)
-    exp = Experiment(exp_name)
+    exp = Experiment(exp_folder, exp_name)
     exp.run()
     exp.test() 
