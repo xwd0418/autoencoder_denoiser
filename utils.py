@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import matplotlib.image
 import cv2, numpy as np
 import torch
+from torchmetrics.functional import precision_recall
+
 
 """ Part 1
 plotting helper
@@ -12,12 +14,16 @@ diff_clist = [(0,"green"), (0.5,"white"), (1, "red")]
 custom_diff_cmap = matplotlib.colors.LinearSegmentedColormap.from_list("_",diff_clist)
 plt.rcParams["figure.figsize"] = (16,20)
 
-def display_pics(noise_pic, prediction_pic, raw_pic, title_name=None, save_path=None):
+@torch.no_grad()
+def display_pics(noise_pic, prediction_pic, raw_pic, title_name=None, save_path=None ,  config= None):
     '''
     display noisey pic, prediction, clean pic, and difference repestively
     input should be a 2D array/tensor
     '''
-   
+    if config and config['experiment']['loss_func'] != "MSE":
+        prediction_pic = torch.sigmoid(prediction_pic)
+    prediction_pic = prediction_pic.detach().numpy()
+    raw_pic = raw_pic.detach().numpy()
     
     if title_name:
         plt.title(title_name)
@@ -51,13 +57,10 @@ def display_pics(noise_pic, prediction_pic, raw_pic, title_name=None, save_path=
                     # difference = prediction_pic-raw_pic
                     # difference = difference.float()/2 + 0.5
                     # print(difference)
-    difference = cv2.subtract(np.array(prediction_pic), np.array(raw_pic))
+    difference = cv2.subtract(prediction_pic, raw_pic)
     plt.imshow(difference, cmap = custom_diff_cmap, vmax=1, vmin=-1)
 
     plt.colorbar()
-    
-
-
                     
     if save_path:
         plt.savefig(save_path)
@@ -68,9 +71,39 @@ def display_pics(noise_pic, prediction_pic, raw_pic, title_name=None, save_path=
     else:
         plt.figure()
         
-        
-        
 
+@torch.no_grad()        
+def display_precision_recalls(model, loader, title_name=None, save_path=None ,  config= None):
+    device = torch.device("cuda:0")
+    noise_pic_SNRs = []
+    precisions = []
+    recalls = []
+    for iter, data in enumerate((loader)): 
+        ground_truth, noise =  data
+        ground_truth, noise = ground_truth.to(device).float(), noise.to(device).float()
+        prediction = model.forward(noise)
+        noise_pic_SNRs.add(__compute_SNR(ground_truth, noise))
+        
+        precision ,recall = precision_recall(prediction,ground_truth.int())
+        precisions.append(precision)
+        recalls.append(recall)
+        
+    plt.figure()
+    if title_name:
+        plt.title(title_name)     
+        
+    plt.plot(noise_pic_SNRs, precisions, color='r', label='precisions') 
+    plt.plot(noise_pic_SNRs, recalls, color='g', label='recalls') 
+    
+    # Naming the x-axis, y-axis and the whole graph 
+    plt.xlabel("SNR of images before denoising") 
+    plt.ylabel("Magnitude") 
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.clf()
+        
+    return noise_pic_SNRs, precisions , recalls
 
 ''' part 2
 SNR helper:
@@ -176,3 +209,111 @@ def compute_metrics(raw, noise, prediction):
     
 #     # print(orig_SNR, denoised_SNR, orig_wSNR, denoised_wSNR, SNR_inc, wSNR_inc)
 #     return orig_SNR.item(), denoised_SNR.item(), orig_wSNR.item(), denoised_wSNR.item(), SNR_inc.item(), wSNR_inc.item()
+
+
+
+
+'''part 3, real imgs loader help
+    It is used to give loaders with different levels of noises
+'''
+
+from glob import glob
+from tqdm import tqdm
+from torch.utils.data import Dataset, DataLoader
+from hsqc_dataset import RealNoiseDataset_Byeol
+import os, pickle
+
+def generate_loaders(k, config):
+    """generate loaders for k-fold cross validation, toghether with curriculum training
+
+    Args:
+        k (int): k-fold
+        num_stages (_type_): it could be None, which means no stage, so loaders will include everything
+
+    Yields:
+        _type_: loaders
+    """
+    with open('/root/autoencoder_denoiser/dataset/all_names.pkl', 'rb') as f:
+        all_names =  pickle.load(f)
+
+    num_stages = config['experiment'].get("num_stage")
+    for _ in range(k):
+        eighty_percent = int(len(all_names)*0.8)
+        nighty_percent = int(len(all_names)*0.9)
+        # print(eighty_percent, nighty_percent, len(all_names))
+        train_partition = all_names[:eighty_percent]
+        val_partition = all_names[eighty_percent:nighty_percent]
+        test_partition = all_names[nighty_percent:]
+        
+        train_loaders , val_loaders ,test_loaders = get_loaders_from_partition(
+                    train_partition,val_partition,test_partition, config, num_stages
+        )
+        yield train_loaders, val_loaders, test_loaders
+        split_point = len(all_names)//k
+        all_names = all_names[split_point:]+all_names[:split_point]
+            
+def get_loaders_from_partition(train_partition,val_partition,test_partition, config, num_stages):
+    
+    if num_stages == None:
+        
+        train_loaders = get_loader(train_partition, config)
+        val_loader = get_loader(val_partition, config)
+        test_loader = get_loader(test_partition, config, is_test_loader=True)
+        return [train_loaders], [val_loader], [test_loader]
+    
+    train_loaders, val_loader, test_loader = [], [], []
+    
+    for i in range(num_stages):
+        noise_level = i+1
+        if noise_level == num_stages:
+            # return loaders that include evcerything
+            train_loader_all, val_loader_all, test_loader_all =  get_loaders_from_partition(train_partition,val_partition,test_partition, config, None) 
+            train_loaders += train_loader_all
+            val_loader    += val_loader_all
+            test_loader   += test_loader_all
+        else:    
+            train_loaders.append(get_loader(train_partition, config, noise_level=noise_level))
+            val_loader   .append(get_loader(val_partition,   config, noise_level=noise_level))
+            test_loader  .append(get_loader(test_partition,  config, noise_level=noise_level, is_test_loader=True))
+    
+    return train_loaders, val_loader, test_loader
+    
+
+def get_loader( compound_names, config, noise_level=None, is_test_loader = False):
+    """return a dataloader of real images
+
+    Args:
+        compound_names (list of strings): names of coumpounds
+        noise_level (int): _description_. Defaults to None.  
+        
+        In the files, Larger level means cleaner imgs. 
+        Here, level should be in range of 1 ~ 15, 1 means the cleanest imgs, 15 means the noisiest
+
+    """
+    # print(' buiding ....')
+    # print(train_or_val_or_test_partition)
+    img_parent_dir = '/root/autoencoder_denoiser/dataset/group_by_name_and_stage'
+    data_list = []
+    for name in compound_names:
+        coumpound_dir = os.path.join(img_parent_dir, name)
+        coumpound_imgs_paths = sorted(glob(coumpound_dir+"/*"))
+        coumpound_imgs_level_of_noise_and_paths = [  (int(path.split('.')[0].split('_')[-1]),path)  \
+                    for path in coumpound_imgs_paths[:-1] ] # last one is ground truth
+        # It should look like [(0, dataset/xxx.np), (1, dataset/xxx.np), .......]
+        
+        # determine how many data should include for the loader with such level_of_noise specification
+        coumpound_imgs_level_of_noise_and_paths.sort(reverse=True)
+        if noise_level == None:
+            num_data_to_output = len(coumpound_imgs_level_of_noise_and_paths)
+        else:
+            num_data_to_output = min(len(coumpound_imgs_level_of_noise_and_paths), noise_level)
+            
+        for _level, noise_img in   coumpound_imgs_level_of_noise_and_paths[:num_data_to_output]  :
+            
+                noise, ground_truth = np.load(noise_img), np.load(coumpound_imgs_paths[-1])
+                if config['dataset'].get('absolute'):
+                    noise, ground_truth = np.abs(noise), np.abs(ground_truth)
+                data_list.append((np.expand_dims(ground_truth,axis=0), np.expand_dims(noise,axis=0)))
+    batch_size = 1 if is_test_loader else config['dataset']['batch_size']
+    loader_output = DataLoader((data_list), batch_size=batch_size, shuffle=True)
+    return loader_output

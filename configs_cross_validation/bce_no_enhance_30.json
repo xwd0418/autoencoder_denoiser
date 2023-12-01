@@ -1,0 +1,25 @@
+{
+    "experiment_name": "noise1",
+    "dataset": {
+      "real_img_dataset_name": "Byeol",
+      "super_noisy": false,
+
+      "batch_size": 64,
+      "absolute":true
+    },
+    "experiment": {
+      "num_epochs": 100,
+      "learning_rate": 5e-6,
+      "loss_func":"BCE",
+      "BCE_pos_weight":30,
+      "lr_step": 0,
+      "lr_scheduler_step": [30,80, 140, 200],
+      "lr_scheduler_type": "criterion"
+    },
+    "model": {
+        "model_type": "UNet",
+        "bilinear": true
+      },
+    "loading_path":"/root/autoencoder_denoiser/exps/results_BCE_no_enhance_signal/pos_weight_30/latest_model.pt"
+  }
+  

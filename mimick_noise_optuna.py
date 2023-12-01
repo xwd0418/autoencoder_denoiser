@@ -80,8 +80,8 @@ def objective(trial):
 
 if __name__ == "__main__":
     study = optuna.create_study(
-        storage='postgresql+psycopg2://testUser:testPassword@10.244.52.139:5432/testDB',  # Specify the storage URL here.
-        study_name="mimicking-noise-upscaled",
+        storage='postgresql+psycopg2://testUser:testPassword@10.244.244.184:5432/testDB',  # Specify the storage URL here.
+        study_name="mimicking-noise-upscaled-no-more",
         load_if_exists = True
     )
     study.optimize(objective, n_trials=100)

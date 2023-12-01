@@ -1,3 +1,8 @@
+'''
+deprecated, refer to /root/autoencoder_denoiser/transfer_w_cross_validation.py
+'''
+
+
 import json, sys, os, pickle, random
 import numpy as np
 import torch, copy, cv2
@@ -143,7 +148,7 @@ class TransferDenoiseExp(object):
                                                         or img_noise_level
                 
                 if in_range:
-                    data_list.append((np.load(noise_img), np.load(coumpound_imgs_paths[-1])))
+                    data_list.append(( np.load(coumpound_imgs_paths[-1]), np.load(noise_img)))
         loader_output = DataLoader(DatasetFromList(data_list), batch_size=self.config['experiment']['batch_size'], shuffle=True)
         return loader_output
     
@@ -196,7 +201,7 @@ class TransferDenoiseExp(object):
                     
                     #train
                     for iter, data in enumerate((train_loader)):
-                        noise, ground_truth = data   
+                        ground_truth, noise  = data = data   
                         ground_truth, noise = ground_truth.unsqueeze(1), noise.unsqueeze(1)
                         ground_truth, noise = ground_truth.to(self.device).float(), noise.to(self.device).float()
                         self.__optimizer.zero_grad()
@@ -211,7 +216,7 @@ class TransferDenoiseExp(object):
                     with torch.no_grad(): 
                         for iter, data in enumerate((val_loader)):
                         
-                            noise, ground_truth = data   
+                            ground_truth, noise  = data = data   
                             ground_truth, noise = ground_truth.unsqueeze(1), noise.unsqueeze(1)
                             ground_truth, noise = ground_truth.to(self.device).float(), noise.to(self.device).float()
                             prediction = self.__model.forward(noise)
@@ -235,7 +240,7 @@ class TransferDenoiseExp(object):
             test_loss = 0
             with torch.no_grad(): 
                 for iter, data in enumerate((test_loader)):
-                    noise, ground_truth = data   
+                    ground_truth, noise  = data = data   
                     ground_truth, noise = ground_truth.unsqueeze(1), noise.unsqueeze(1)
                     ground_truth, noise = ground_truth.to(self.device).float(), noise.to(self.device).float()
                     prediction = self.__model.forward(noise)

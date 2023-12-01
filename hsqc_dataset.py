@@ -61,9 +61,6 @@ class HSQCDataset(Dataset):
         
         upscale_factor = self.config['dataset'].get('signal_upscale')
         if upscale_factor!=None:
-            # upscaled_shape = (raw_sample.shape[2]*upscale_factor,raw_sample.shape[1]*upscale_factor)
-            # raw_sample = cv2.resize(raw_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
-            # noisy_sample = cv2.resize(noisy_sample[0], upscaled_shape , interpolation = cv2.INTER_LINEAR) 
             raw_sample = np.repeat(raw_sample, upscale_factor, axis=0)
             raw_sample = np.repeat(raw_sample, upscale_factor, axis=1)
            
@@ -122,7 +119,13 @@ class HSQCDataset(Dataset):
         if self.config['dataset']['absolute']:
             raw_sample, noisy_sample = np.abs(raw_sample), np.abs(noisy_sample)
             
-      
+        # upscale_factor = self.config['dataset'].get('signal_upscale')
+        # if upscale_factor!=None:
+        #     raw_sample = np.repeat(raw_sample, upscale_factor, axis=1)
+        #     raw_sample = np.repeat(raw_sample, upscale_factor, axis=2)
+        #     noisy_sample =  np.repeat(noisy_sample, upscale_factor, axis=1)
+        #     noisy_sample =  np.repeat(noisy_sample, upscale_factor, axis=2)
+            
         return raw_sample, noisy_sample
     
 

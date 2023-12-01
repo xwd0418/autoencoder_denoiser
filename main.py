@@ -1,6 +1,7 @@
 from experiment import Experiment
 import sys, torch
 import random, numpy as np
+from transfer_w_cross_validation import DenoiseExp
 
 # Main Driver for your code. Either run `python main.py` which will run the experiment with default config
 # or specify the configuration by running `python main.py custom`
@@ -22,4 +23,8 @@ if __name__ == "__main__":
     print("Running Experiment: ", exp_name)
     exp = Experiment(exp_folder, exp_name)
     exp.run()
-    exp.test() 
+    config = exp.test() 
+    
+    TransferLearningExp = DenoiseExp(exp_name, config)
+    k_fold = 2 if config.get("DEBUG") else 10
+    TransferLearningExp.run(k_fold=k_fold)
